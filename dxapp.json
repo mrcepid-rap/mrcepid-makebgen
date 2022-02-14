@@ -1,0 +1,77 @@
+{
+  "name": "mrcepid-makebgen",
+  "title": "MakeBGEN",
+  "summary": "Makes a sorted BGEN file from a list of vcfs",
+  "dxapi": "1.0.0",
+  "version": "0.0.1",
+  "inputSpec": [
+    {
+      "name": "chromosome",
+      "label": "chromosome to merge",
+      "class": "string",
+      "optional": false,
+      "help": "chromosome to merge"
+    }
+  ],
+  "outputSpec": [
+    {
+      "name": "bgen",
+      "label": "Output bgen",
+      "class": "file",
+      "optional": false,
+      "patterns": [
+        "*.tsv"
+      ],
+      "help": "Output bgen"
+    },
+    {
+      "name": "index",
+      "label": "Output bgen index",
+      "class": "file",
+      "optional": false,
+      "patterns": [
+        "*.tsv"
+      ],
+      "help": "Output bgen index"
+    },
+    {
+      "name": "sample",
+      "label": "Output bgen.sample",
+      "class": "file",
+      "optional": false,
+      "patterns": [
+        "*.tsv"
+      ],
+      "help": "Output bgen sample file"
+    }
+  ],
+  "access": {
+    "network": [
+      "*"
+    ]
+  },
+  "runSpec": {
+    "timeoutPolicy": {
+      "*": {
+        "hours": 12
+      }
+    },
+    "interpreter": "python3",
+    "file": "src/mrcepid-makebgen.py",
+    "distribution": "Ubuntu",
+    "release": "20.04",
+    "version": "0",
+    "execDepends": [
+      {"name": "pandas",
+      "package_manager": "pip"}]
+  },
+  "regionalOptions": {
+    "aws:eu-west-2": {
+      "systemRequirements": {
+        "*": {
+          "instanceType": "mem3_ssd1_v2_x16"
+        }
+      }
+    }
+  }
+}
