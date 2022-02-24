@@ -11,6 +11,19 @@
       "class": "string",
       "optional": false,
       "help": "chromosome to merge"
+    },
+    {
+      "name": "coordinate_file",
+      "label": "list of bcf files to merge into bgen",
+      "class": "file",
+      "optional": true,
+      "help": "formatted list of bcf files to merge into bgen. See README for format.",
+      "default": {
+        "$dnanexus_link": {
+          "project": "project-G6BJF50JJv8p4PjGB9yy7YQ2",
+          "id": "file-G7x5910JJv8XZkq44949xbJq"
+        }
+      }
     }
   ],
   "outputSpec": [
@@ -20,7 +33,7 @@
       "class": "file",
       "optional": false,
       "patterns": [
-        "*.tsv"
+        "*.bgen"
       ],
       "help": "Output bgen"
     },
@@ -30,7 +43,7 @@
       "class": "file",
       "optional": false,
       "patterns": [
-        "*.tsv"
+        "*.bgen.bgi"
       ],
       "help": "Output bgen index"
     },
@@ -40,9 +53,29 @@
       "class": "file",
       "optional": false,
       "patterns": [
-        "*.tsv"
+        "*.sample"
       ],
       "help": "Output bgen sample file"
+    },
+    {
+      "name": "vep",
+      "label": "Output vep annotations",
+      "class": "file",
+      "optional": false,
+      "patterns": [
+        "*.tsv.gz"
+      ],
+      "help": "Output vep annotations"
+    },
+    {
+      "name": "vep_idx",
+      "label": "Output vep annotations index",
+      "class": "file",
+      "optional": false,
+      "patterns": [
+        "*.tsv.gz.tbi"
+      ],
+      "help": "Output vep annotations index"
     }
   ],
   "access": {

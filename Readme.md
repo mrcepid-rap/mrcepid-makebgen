@@ -1,4 +1,4 @@
-# CollapseVariants (DNAnexus Platform App)
+# MakeBGEN (DNAnexus Platform App)
 
 This is the source code for an app that runs on the DNAnexus Platform.
 For more information about how to run or modify it, see
@@ -22,7 +22,7 @@ https://documentation.dnanexus.com/.
 
 ## Introduction
 
-This applet generates raw data necessary to perform rare variant burden testing using [bcftools](https://samtools.github.io/bcftools/bcftools.html)
+This applet converts filtered and annotated  [bcftools](https://samtools.github.io/bcftools/bcftools.html)
 or [plink2](https://www.cog-genomics.org/plink/2.0/). Please see these two tool's respective documentation for more
 information on how individual commands used in this applet work.
 
@@ -161,9 +161,9 @@ they are mainly intermediate and not used by any other applets / tools.
 
 |input|description             |
 |---- |------------------------|
-|input_vcf  | Input vcf file from [mrcepid-annotatecadd](https://github.com/mrcepid-rap/mrcepid-filterbcf) to annotate with CADD |
 |filtering_expression | [bcftools](https://samtools.github.io/bcftools/bcftools.html) compatible filtering expression. See [above](#1-filtering-with-bcftools-filtering-expressions) |
 |file_prefix | descriptive file prefix for output name |
+|bgen_index | index of bgen information and corresponding annotations **[file-G86GJ3jJJv8fbXVB9PQ2pjz6]**.
 
 **BIG Note:** The value provided to `file_prefix` **MUST** be identical for all VCF files that you wish to merge and test during
 rare variant burden testing.

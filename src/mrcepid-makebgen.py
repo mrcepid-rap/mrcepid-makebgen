@@ -13,13 +13,9 @@ import os
 import gzip
 import csv
 import math
+import pandas as pd
 from concurrent import futures
 from concurrent.futures import ThreadPoolExecutor
-
-# This is to generate a global CHROMOSOMES variable for parallelisation
-CHROMOSOMES = list(range(1,23)) # Is 0 based on the right coordinate...? (So does 1..22)
-CHROMOSOMES.extend(['X'])
-CHROMOSOMES = list(map(str, CHROMOSOMES))
 
 
 # This function runs a command on an instance, either with or without calling the docker instance we downloaded
@@ -54,13 +50,17 @@ def purge_file(file: str) -> None:
     run_cmd(cmd)
 
 
-def make_bgen_from_vcf(vcf: str) -> None:
+def make_bgen_from_vcf(vcf: str, vep: str) -> None:
 
     try:
         vcf = dxpy.DXFile(vcf.rstrip())
         print("Processing bcf: " + vcf.describe()['name'])
         vcfprefix = vcf.describe()['name'].rstrip(".bcf") # Get a prefix name for all files
         dxpy.download_dxfile(vcf.get_id(), vcfprefix + ".bcf")
+
+        vep = dxpy.DXFile(vep.rstrip())
+        dxpy.download_dxfile(vep.get_id(), vcfprefix + ".vep.tsv.gz")
+
         print("Running file: " + vcfprefix)
 
         cmd = "plink2 --threads 2 --memory 10000 " \
@@ -85,6 +85,11 @@ def make_final_bgen(chromosome: str) -> None:
     coord_file_reader = csv.DictReader(gzip.open('coordinates.files.tsv.gz', mode = 'rt'), delimiter="\t")
     cmd = "cat-bgen"
     is_first = True
+    vep_files = []
+    vep_header = ["CHROM","POS","REF","ALT","varID","ogVarID","FILTER","AF","F_MISSING","AN","AC","MANE","ENST","ENSG",
+                  "BIOTYPE","SYMBOL","CSQ","gnomAD_AF","CADD","REVEL","SIFT","POLYPHEN","LOFTEE","AA","AApos",
+                  "PARSED_CSQ","MULTI","INDEL","MINOR","MAJOR","MAF","MAC"]
+
     for row in coord_file_reader:
         if row['#chrom'] == chromosome:
             if is_first == True:
@@ -92,6 +97,7 @@ def make_final_bgen(chromosome: str) -> None:
                 run_cmd(cpcmd)
                 is_first = False
             cmd += " -g /test/" + row['chunk_prefix'] + ".norm.filtered.tagged.missingness_filtered.annotated.cadd.bgen"
+            vep_files.append(pd.read_csv(gzip.open(row['chunk_prefix'] + ".norm.filtered.tagged.missingness_filtered.annotated.cadd.vep.tsv.gz", 'rt'), sep = "\t", header=None, names=vep_header))
 
     cmd += " -og /test/" + chromosome + ".filtered.bgen"
     run_cmd(cmd, True)
@@ -99,9 +105,19 @@ def make_final_bgen(chromosome: str) -> None:
     cmd = "bgenix -index -g /test/" + chromosome + ".filtered.bgen"
     run_cmd(cmd, True)
 
+    # Mash the vep files together:
+    vep_index = pd.concat(vep_files)
+    vep_index.to_csv(path_or_buf=chromosome + '.filtered.vep.tsv', na_rep='NA', index=False, sep="\t")
+
+    # bgzip and tabix index the resulting annotations
+    cmd = "bgzip /test/" + chromosome + '.filtered.vep.tsv'
+    run_cmd(cmd, True)
+    cmd = "tabix -S 1 -s 1 -b 2 -e -2 /test/" + chromosome + '.filtered.vep.tsv.gz'
+    run_cmd(cmd, True)
+
 
 @dxpy.entry_point('main')
-def main(chromosome):
+def main(chromosome, coordinate_file):
 
     threads = os.cpu_count()
     print('Number of threads available: %i' % threads)
@@ -109,7 +125,7 @@ def main(chromosome):
     cmd = "docker pull egardner413/mrcepid-filtering:latest"
     run_cmd(cmd)
 
-    coordinate_file = dxpy.DXFile('file-G7x5910JJv8XZkq44949xbJq')
+    coordinate_file = dxpy.DXFile(coordinate_file)
     dxpy.download_dxfile(coordinate_file.get_id(), "coordinates.files.tsv.gz")
 
     coord_file_reader = csv.DictReader(gzip.open('coordinates.files.tsv.gz', mode = 'rt'), delimiter="\t")
@@ -124,7 +140,8 @@ def main(chromosome):
     for row in coord_file_reader:
         if row['#chrom'] == chromosome:
             future_pool.append(executor.submit(make_bgen_from_vcf,
-                                               vcf=row['bcf_dxpy']))
+                                               vcf=row['bcf_dxpy'],
+                                               vep=row['vep_dxpy']))
 
     print("All threads submitted...")
 
@@ -142,7 +159,9 @@ def main(chromosome):
     # Set output
     output = {"bgen": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.bgen')),
               "index": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.bgen.bgi')),
-              "sample": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.sample'))}
+              "sample": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.sample')),
+              "vep": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.vep.tsv.gz')),
+              "vep_idx": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.vep.tsv.gz.tbi'))}
 
     return output
 
