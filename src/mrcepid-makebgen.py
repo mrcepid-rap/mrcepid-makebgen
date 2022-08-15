@@ -6,6 +6,7 @@
 #
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
+from typing import List, Tuple
 
 import dxpy
 import subprocess
@@ -14,6 +15,7 @@ import gzip
 import csv
 import math
 import pandas as pd
+import numpy as np
 from concurrent import futures
 from concurrent.futures import ThreadPoolExecutor
 
@@ -27,10 +29,9 @@ def run_cmd(cmd: str, is_docker: bool = False) -> None:
         # Docker instance named /test/. This allows us to run commands on files stored on the AWS instance within Docker
         cmd = "docker run " \
               "-v /home/dnanexus:/test " \
-              "egardner413/mrcepid-filtering " + cmd
+              "egardner413/mrcepid-burdentesting " + cmd
 
     # Standard python calling external commands protocol
-    print(cmd)
     proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = proc.communicate()
 
@@ -44,75 +45,210 @@ def run_cmd(cmd: str, is_docker: bool = False) -> None:
         raise dxpy.AppError("Failed to run properly...")
 
 
+def ingest_resources() -> None:
+
+    cmd = "docker pull egardner413/mrcepid-burdentesting:latest"
+    run_cmd(cmd)
+
+
 def purge_file(file: str) -> None:
 
     cmd = "rm " + file
     run_cmd(cmd)
 
 
-def make_bgen_from_vcf(vcf: str, vep: str) -> None:
+# Helper function to ensure the final VEP file conforms to the required format
+def process_vep(vcfprefix: str) -> pd.DataFrame:
 
-    try:
-        vcf = dxpy.DXFile(vcf.rstrip())
-        print("Processing bcf: " + vcf.describe()['name'])
-        vcfprefix = vcf.describe()['name'].rstrip(".bcf") # Get a prefix name for all files
-        dxpy.download_dxfile(vcf.get_id(), vcfprefix + ".bcf")
+    vep_header = ["CHROM", "POS", "REF", "ALT", "ogVarID", "FILTER", "AF", "F_MISSING", "AN", "AC", "MANE",
+                  "ENST", "ENSG", "BIOTYPE", "SYMBOL", "CSQ", "gnomAD_AF", "CADD", "REVEL", "SIFT", "POLYPHEN",
+                  "LOFTEE", "AA", "AApos", "PARSED_CSQ", "MULTI", "INDEL", "MINOR", "MAJOR", "MAF", "MAC"]
 
-        vep = dxpy.DXFile(vep.rstrip())
-        dxpy.download_dxfile(vep.get_id(), vcfprefix + ".vep.tsv.gz")
+    current_df = pd.read_csv(gzip.open(vcfprefix + ".vep.tsv.gz", 'rt'), sep="\t", header=None, names=vep_header)
 
-        print("Running file: " + vcfprefix)
+    # Need to add a column with a modifed variant ID that is required during downstream processing
+    current_df['newCHROM'] = current_df['CHROM'].apply(lambda x: x.strip('chr'))
+    current_df['varID'] = current_df['newCHROM'] + ":" + current_df['POS'].astype(str) + ":" + current_df['REF'] + ":" + current_df['ALT']
+    current_df = current_df.drop(columns={'newCHROM'})
 
-        cmd = "plink2 --threads 2 --memory 10000 " \
-                  "--bcf /test/" + vcfprefix + ".bcf " \
-                  "--export bgen-1.2 'bits='8 'sample-v2' " \
-                  "--vcf-half-call r " \
-                  "--out /test/" + vcfprefix + " " \
-                  "--set-all-var-ids @:#:\$r:\$a " \
-                  "--new-id-max-allele-len 100"
+    # Make sure varID is in the correct place in the table when writing
+    vep_header.insert(4, 'varID')
+    current_df = current_df[vep_header]
+
+    # For some reason AF is not corrected in the previous step when every genotype is missing (i.e. F_MISSING == 1).
+    current_df['AF'] = current_df['AF'].apply(lambda x: x if x != '.' else 0)
+    current_df['AF'] = current_df['AF'].astype(np.float64)
+
+    # Remove duplicate variants based on pre-determined criteria
+    current_df, removed_df = deduplicate_vep(current_df)
+
+    # Remove the old file and rename to the new file so we can process later without having to return a pandas DataFrame
+    # in a thread-unsafe way.
+    purge_file(vcfprefix + ".vep.tsv.gz")
+    current_df.to_csv(path_or_buf=vcfprefix + '.vep.tsv', na_rep='NA', index=False, sep="\t")
+
+    return removed_df
+
+
+# Helper function for process_vep() to remove duplicate variants
+def deduplicate_vep(current_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
+    var_counts = current_df['varID'].value_counts()
+    duplicates = var_counts[var_counts == 2]
+    removed_variants = []
+
+    # This iterates over all duplicates on this chromosome...
+    # [0] = the variant ID
+    # [1] = the number of times the variant ID appears
+    for dup in duplicates.iteritems():
+        dup_index = current_df[current_df['varID'] == dup[0]].index.to_list()
+        dup_rows = current_df.iloc[dup_index]
+
+        # Then we iterate through each duplicate and select the 'best' variant based on the following hierarchy:
+        # 1. PASS/FAIL
+        # 2. Lower missingness
+        # 3. Higher MAF (logic here is that the 'better' call is on the correct genotype and will happen more often.
+        #    I'm not going to mess around with trying to merge genotypes, which is likely to be the best solution.
+        keep_index = None
+        current_filter = None
+        current_missing = None
+        current_af = None
+        for row in dup_rows.iterrows():
+            index = row[0]
+            table = row[1]
+            if keep_index is None:
+                keep_index = index
+                current_filter = table['FILTER']
+                current_missing = table['F_MISSING']
+                current_af = table['AF']
+            else:
+                if current_filter == 'FAIL' and table['FILTER'] == 'PASS':
+                    keep_index = index
+                    current_filter = table['FILTER']
+                    current_missing = table['F_MISSING']
+                    current_af = table['AF']
+                elif current_missing > table['F_MISSING']:
+                    keep_index = index
+                    current_filter = table['FILTER']
+                    current_missing = table['F_MISSING']
+                    current_af = table['AF']
+                elif current_af < table['AF']:
+                    keep_index = index
+                    current_filter = table['FILTER']
+                    current_missing = table['F_MISSING']
+                    current_af = table['AF']
+
+        dup_index.remove(keep_index)
+        removed_variants.append(current_df[current_df.index.isin(dup_index)])
+        current_df = current_df[current_df.index.isin(dup_index) == False]
+
+    # Need to create an empty pd.DataFrame so that we can return something for deduplicate_bcf() to use.
+    # deduplicate_bcf() will just return immediately for an empty DataFrame, so no harm here.
+    if len(removed_variants) == 0:
+        removed_variants = pd.DataFrame()
+    else:
+        removed_variants = pd.concat(removed_variants)
+
+    return current_df, removed_variants
+
+
+# Helper function for make_bgen_from_vcf() to remove sites identified as duplicate in process_vep() from the bcf
+def deduplicate_bcf(vcfprefix: str, removed_df: pd.DataFrame) -> None:
+
+    for row in removed_df.iterrows():
+        table = row[1]
+        position = table['POS']
+        ref = table['REF']
+        alt = table['ALT']
+        og_id = table['ogVarID']
+
+        # Generate a query that matches on position, ref, alt, and og_id. I am fairly certain that all duplicates come
+        # from different multi-allelics, so this _should_ be safe...
+        query = f'POS={position} && REF="{ref}" && ALT="{alt}" && ID="{og_id}"'
+        cmd = 'bcftools view --threads 2 -e \'' + query + '\' -Ob -o /test/' + vcfprefix + '.deduped.bcf /test/' + vcfprefix + '.bcf'
         run_cmd(cmd, True)
 
-        purge_file(vcfprefix + ".bcf")
+        # And then rename to the original file to complete the process.
+        # If there are multiple duplicates in this record, this will allow the process to loop again, iteratively
+        # removing each duplicate one-by-one
+        purge_file(vcfprefix + '.bcf')
+        os.rename(vcfprefix + '.deduped.bcf', vcfprefix + '.bcf')
 
-    except Exception as err:
-        # Do this as a form of error tracking:
-        print("Error in bcf: " + vcf.describe()['name'])
-        print(Exception, err)
+
+# Downloads the BCF/VEP for a single chunk and processes it.
+# Returns a dict of the chunk name and start coordinate. This is so the name can be provided for merging, sorted by
+# start coordinate so sorting doesn't have to happen twice
+def make_bgen_from_vcf(vcf: str, vep: str, start: int) -> dict:
+
+    vcf = dxpy.DXFile(vcf.rstrip())
+    vep = dxpy.DXFile(vep.rstrip())
+
+    # Set names and DXPY files for bcf/vep file
+    print("Processing bcf: " + vcf.describe()['name'])
+    vcfprefix = vcf.describe()['name'].rstrip(".bcf")  # Get a prefix name for all files
+    dxpy.download_dxfile(vcf.get_id(), vcfprefix + ".bcf")
+    dxpy.download_dxfile(vep.get_id(), vcfprefix + ".vep.tsv.gz")
+
+    # Remove duplicate sites due to erroneous multi-allelic processing by UKBB
+    duplicate_sites = process_vep(vcfprefix)
+    deduplicate_bcf(vcfprefix, duplicate_sites)
+
+    # And convert processed bcf into bgenv1.2
+    cmd = "plink2 --threads 2 --memory 10000 " \
+              "--bcf /test/" + vcfprefix + ".bcf " \
+              "--export bgen-1.2 'bits='8 'sample-v2' " \
+              "--vcf-half-call r " \
+              "--out /test/" + vcfprefix + " " \
+              "--set-all-var-ids @:#:\$r:\$a " \
+              "--new-id-max-allele-len 100"
+    run_cmd(cmd, True)
+
+    # Delete the original .bcf from the instance to save space
+    purge_file(vcfprefix + ".bcf")
+
+    # Return both the processed prefix and the start coordinate to enable easy merging/sorting
+    return {'vcfprefix': vcfprefix,
+            'start': start}
 
 
-def make_final_bgen(chromosome: str) -> None:
+# Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations
+# bgen_prefixes is a dictionary of form {vcfprefix: start_coordinate}
+def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
 
-    coord_file_reader = csv.DictReader(gzip.open('coordinates.files.tsv.gz', mode = 'rt'), delimiter="\t")
+    vep_files = []  # A list containing pandas DataFrames that will be concatenated together
+
+    # How this works: we just keep adding each chunk .bgen file to the end of the cat-bgen command since it doesn't
+    # appear to accept a file-list as an input, rather than command-line
     cmd = "cat-bgen"
-    is_first = True
-    vep_files = []
-    vep_header = ["CHROM","POS","REF","ALT","varID","ogVarID","FILTER","AF","F_MISSING","AN","AC","MANE","ENST","ENSG",
-                  "BIOTYPE","SYMBOL","CSQ","gnomAD_AF","CADD","REVEL","SIFT","POLYPHEN","LOFTEE","AA","AApos",
-                  "PARSED_CSQ","MULTI","INDEL","MINOR","MAJOR","MAF","MAC"]
+    sorted_bgen_prefixes = sorted(bgen_prefixes)
 
-    for row in coord_file_reader:
-        if row['#chrom'] == chromosome:
-            if is_first == True:
-                cpcmd = "cp " + row['chunk_prefix'] + ".norm.filtered.tagged.missingness_filtered.annotated.cadd.sample " + chromosome + ".filtered.sample"
-                run_cmd(cpcmd)
-                is_first = False
-            cmd += " -g /test/" + row['chunk_prefix'] + ".norm.filtered.tagged.missingness_filtered.annotated.cadd.bgen"
-            vep_files.append(pd.read_csv(gzip.open(row['chunk_prefix'] + ".norm.filtered.tagged.missingness_filtered.annotated.cadd.vep.tsv.gz", 'rt'), sep = "\t", header=None, names=vep_header))
+    for i in range(0, len(sorted_bgen_prefixes)):
+        if i == 0:
+            cp_cmd = "cp " + sorted_bgen_prefixes[i] + ".sample " + chromosome + ".filtered.sample"
+            run_cmd(cp_cmd)
+        cmd += " -g /test/" + sorted_bgen_prefixes[i] + ".bgen"
 
+        # Collect VEP annotations at this time
+        vep_files.append(pd.read_csv(sorted_bgen_prefixes[i] + ".vep.tsv", sep="\t"))
+        purge_file(sorted_bgen_prefixes[i] + ".vep.tsv")
+
+    # Add the output filename and concatenate
     cmd += " -og /test/" + chromosome + ".filtered.bgen"
     run_cmd(cmd, True)
 
+    # And index the bgen for random query later
     cmd = "bgenix -index -g /test/" + chromosome + ".filtered.bgen"
     run_cmd(cmd, True)
 
-    # Mash the vep files together:
+    # Mash the vep files together and write to .tsv format:
     vep_index = pd.concat(vep_files)
+    # vep_index = deduplicate_vep(vep_index)
     vep_index.to_csv(path_or_buf=chromosome + '.filtered.vep.tsv', na_rep='NA', index=False, sep="\t")
 
     # bgzip and tabix index the resulting annotations
     cmd = "bgzip /test/" + chromosome + '.filtered.vep.tsv'
     run_cmd(cmd, True)
-    cmd = "tabix -S 1 -s 1 -b 2 -e -2 /test/" + chromosome + '.filtered.vep.tsv.gz'
+    cmd = "tabix -c C -s 1 -b 2 -e -2 /test/" + chromosome + '.filtered.vep.tsv.gz'
     run_cmd(cmd, True)
 
 
@@ -122,18 +258,18 @@ def main(chromosome, coordinate_file):
     threads = os.cpu_count()
     print('Number of threads available: %i' % threads)
 
-    cmd = "docker pull egardner413/mrcepid-filtering:latest"
-    run_cmd(cmd)
-
-    coordinate_file = dxpy.DXFile(coordinate_file)
-    dxpy.download_dxfile(coordinate_file.get_id(), "coordinates.files.tsv.gz")
-
-    coord_file_reader = csv.DictReader(gzip.open('coordinates.files.tsv.gz', mode = 'rt'), delimiter="\t")
-
     # Now build a thread worker that contains as many threads
     # instance takes a thread and 1 thread for monitoring
     available_workers = math.floor((threads - 1) / 2)
     executor = ThreadPoolExecutor(max_workers=available_workers)
+
+    # Grab resources required for this applet
+    ingest_resources()
+
+    # Get the processed coordinate file
+    coordinate_file = dxpy.DXFile(coordinate_file)
+    dxpy.download_dxfile(coordinate_file.get_id(), "coordinates.files.tsv.gz")
+    coord_file_reader = csv.DictReader(gzip.open('coordinates.files.tsv.gz', mode='rt'), delimiter="\t")
 
     # And launch the requested threads
     future_pool = []
@@ -141,20 +277,24 @@ def main(chromosome, coordinate_file):
         if row['#chrom'] == chromosome:
             future_pool.append(executor.submit(make_bgen_from_vcf,
                                                vcf=row['bcf_dxpy'],
-                                               vep=row['vep_dxpy']))
+                                               vep=row['vep_dxpy'],
+                                               start=row['start']))
 
     print("All threads submitted...")
 
-    # And gather the resulting futures
+    # And gather the resulting futures which are returns of all bgens we need to concatenate:
+    bgen_prefixes = {}
+
     for future in futures.as_completed(future_pool):
         try:
-            future.result()
+            result = future.result()
+            bgen_prefixes[result['vcfprefix']] = result['start']
         except Exception as err:
             print("A thread failed...")
             print(Exception, err)
 
-    # Now mash all of the bgen files together
-    make_final_bgen(chromosome)
+    # Now mash all the bgen files together
+    make_final_bgen(bgen_prefixes, chromosome)
 
     # Set output
     output = {"bgen": dxpy.dxlink(dxpy.upload_local_file(chromosome + '.filtered.bgen')),
