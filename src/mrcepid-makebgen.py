@@ -82,6 +82,8 @@ def get_previous_vep(vcfprefix: str) -> str:
     return matched_vep
 
 
+# Code will *stream* a vep annotation for the given chromosome rather than download, and perform processing to
+# get it into the correct format for merging.
 def load_vep(vep: str) -> pd.DataFrame:
 
     vep_header = ["CHROM", "POS", "REF", "ALT", "ogVarID", "FILTER", "AF", "F_MISSING", "AN", "AC", "MANE",
@@ -101,7 +103,8 @@ def load_vep(vep: str) -> pd.DataFrame:
     vep_header.insert(4, 'varID')
     current_df = current_df[vep_header]
 
-    # For some reason AF is not corrected in the previous step when every genotype is missing (i.e. F_MISSING == 1).
+    # For some reason AF is not corrected in the previous step (filterbcf) when every genotype is missing
+    # (i.e. F_MISSING == 1).
     current_df['AF'] = current_df['AF'].apply(lambda x: x if x != '.' else 0)
     current_df['AF'] = current_df['AF'].astype(np.float64)
 
@@ -283,7 +286,7 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
 
     # Mash the vep files together and write to .tsv format:
     vep_index = pd.concat(vep_files)
-    # vep_index = deduplicate_vep(vep_index)
+    vep_index = vep_index.sort_values('position')  # Make sure sorted
     vep_index.to_csv(path_or_buf=chromosome + '.filtered.vep.tsv', na_rep='NA', index=False, sep="\t")
 
     # bgzip and tabix index the resulting annotations
