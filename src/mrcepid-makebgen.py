@@ -286,7 +286,7 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
 
     # Mash the vep files together and write to .tsv format:
     vep_index = pd.concat(vep_files)
-    vep_index = vep_index.sort_values('position')  # Make sure sorted
+    vep_index = vep_index.sort_values('POS')  # Make sure sorted
     vep_index.to_csv(path_or_buf=chromosome + '.filtered.vep.tsv', na_rep='NA', index=False, sep="\t")
 
     # bgzip and tabix index the resulting annotations
