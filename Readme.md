@@ -90,7 +90,7 @@ This applet does not have any external dependencies.
 This applet is step 3 (mrc-makebgen) of the rare variant testing pipeline developed by Eugene Gardner for the UKBiobank
 RAP at the MRC Epidemiology Unit:
 
-![](https://github.com/mrcepid-rap/.github/blob/main/images/RAPPipeline.png)
+![](https://github.com/mrcepid-rap/.github/blob/main/images/RAPPipeline.v3.png)
 
 The app has two primary steps:
 
@@ -129,13 +129,28 @@ All inputs for this applet are required:
 Each job from [mrcepid-filterbcf](https://github.com/mrcepid-rap/mrcepid-filterbcf) will produce a single coordinates file
 for the files processed in that job. The user must merge these files on their own to provide the required input for this 
 applet. The easiest way to do this is to launch a [Cloud Workstation](https://documentation.dnanexus.com/developer/cloud-workstations/cloud-workstation)
-on DNANexus, download all coordinates files, and merge them like so:
+on DNANexus, download all coordinates files. 
+
+**MASSIVE NOTE**: It is 1000% essential that the coordinate file is sorted as demonstrated below. Otherwise duplicate
+variants spread across multiple bcfs will be included in the final bgen!
 
 ```shell
-dx download filtered_annotated_vcfs/coordinates_*.tsv
-head -n 1 coordinates_*.tsv > coordinates.tsv
-gzip coordinates.tsv
-dx upload --destination filtered_annotated_vcfs/ coordinates.tsv.gz
+# Make a directory to do processing and download files
+mkdir coords & cd coords
+dx download -a --no-progress --lightweight filtered_annotated_vcfs/coordinates_*.tsv
+
+## Do some quick QC to make sure we have 4722 UNIQUE files:
+# Should give 4722 as output
+cat *.tsv | awk '{print $4}' | sort | uniq | wc -l 
+
+# Make a header file...
+echo -e '#chrom\tstart\tstop\tfileprefix\tbcf_dxpy\tvep_dxpy' > coord_header.tsv
+# Concatenate everything together:
+cat coord_header.tsv > bcf_coordinates.tsv; cat *.tsv | sort -k 1,1 -k 2,2n coordinates_*.tsv >> bcf_coordinates.tsv
+bgzip 
+
+# Upload
+dx upload --destination filtered_annotated_vcfs/ bcf_coordinates.tsv.gz
 ```
 
 This file should have the following columns **WITH** a header:
