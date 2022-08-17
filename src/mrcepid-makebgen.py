@@ -165,7 +165,7 @@ def deduplicate_vep(current_df: pd.DataFrame, previous_df: pd.DataFrame, vcfpref
         dup_index.remove(keep_index)
         removed_variants.append(current_df[current_df.index.isin(dup_index)])
         current_df = current_df[current_df.index.isin(dup_index) == False]
-        current_df = current_df.reset_index()
+        current_df = current_df.reset_index(drop=True)
 
     # Need to create an empty pd.DataFrame so that we can return something for deduplicate_bcf() to use.
     # deduplicate_bcf() will just return immediately for an empty DataFrame, so no harm here.
