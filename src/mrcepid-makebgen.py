@@ -244,7 +244,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, start: int) -> dict:
               "--vcf-half-call r " \
               "--out /test/" + vcfprefix + " " \
               "--set-all-var-ids @:#:\$r:\$a " \
-              "--new-id-max-allele-len 100"
+              "--new-id-max-allele-len 500"
     run_cmd(cmd, True)
 
     # Delete the original .bcf from the instance to save space
@@ -336,6 +336,7 @@ def main(chromosome, coordinate_file):
         except Exception as err:
             print("A thread failed...")
             print(Exception, err)
+            raise dxpy.AppError
 
     # Now mash all the bgen files together
     make_final_bgen(bgen_prefixes, chromosome)
