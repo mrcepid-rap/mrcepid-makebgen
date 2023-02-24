@@ -62,7 +62,7 @@ def load_vep(vep: str) -> pd.DataFrame:
 
     # We stream the .vep annotation from dnanexus as it is faster for smaller files like this, and ensures that we don't
     # generate race conditions when loading the same file twice (which we do to check for duplicates...)
-    current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep, mode='rb'), 'rt'), sep="\t", header=None, names=vep_header)
+    current_df = pd.read_csv(dxpy.open_dxfile(vep, mode='rb'), sep="\t", header=None, names=vep_header)
 
     # Need to add a column with a modifed variant ID that is required during downstream processing
     current_df['newCHROM'] = current_df['CHROM'].apply(lambda x: x.strip('chr'))
