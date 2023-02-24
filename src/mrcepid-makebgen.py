@@ -95,7 +95,7 @@ def deduplicate_vep(current_df: pd.DataFrame, previous_df: pd.DataFrame, vcfpref
     # This iterates over all duplicates in this file...
     # [0] = the variant ID
     # [1] = the number of times the variant ID appears
-    for dup in duplicates.iteritems():
+    for dup in duplicates.items():
         dup_index = current_df[current_df['varID'] == dup[0]].index.to_list()
         dup_rows = current_df.iloc[dup_index]
 
@@ -250,7 +250,7 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
         Path(f'{sorted_bgen_prefixes[i]}.vep.tsv').unlink()
 
     # Add the output filename and concatenate
-    cmd += f' -og /test/ {chromosome}.filtered.bgen'
+    cmd += f' -og /test/{chromosome}.filtered.bgen'
     run_cmd(cmd, is_docker=True, docker_image='egardner413/mrcepid-burdentesting:latest')
 
     # And index the bgen for random query later
