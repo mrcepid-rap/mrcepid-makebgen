@@ -6,8 +6,7 @@
 #
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
-
-import re
+import os
 import csv
 import dxpy
 import gzip
@@ -17,8 +16,7 @@ from pathlib import Path
 
 from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
-from general_utilities.association_resources import run_cmd, generate_linked_dx_file
-
+from general_utilities.association_resources import run_cmd, generate_linked_dx_file, find_index
 
 LOGGER = MRCLogger().get_logger()
 
@@ -31,17 +29,12 @@ def ingest_resources() -> None:
 
 
 # Returns a DNANexus file-pointer for the previous VEP index in a file
-def get_previous_vep(vcfprefix: str) -> str:
+def get_previous_vep(original_prefix: str) -> str:
 
     coord_file_reader = pd.read_csv('coordinates.files.tsv.gz', delimiter="\t")
 
-    # Need to find the correct file
-    # Doing this regex just to make sure that weird prefixes/suffices don't screw up our search space
-    vep_match = re.search('(ukb\\d+_c[\dXY]{1,2}_b\\d+_v\\d+_chunk\\d+)', vcfprefix)
-    search_string = vep_match.group(1)
-
     # Get the index of the current file
-    current_index = coord_file_reader[coord_file_reader['fileprefix'] == search_string].index.to_list()[0]
+    current_index = coord_file_reader[coord_file_reader['fileprefix'] == original_prefix].index.to_list()[0]
 
     # subtract one to get previous vep index and search...
     # This is going to do something VERY dumb for the very first file in the index (chr1_b1_chunk1), which is return the
@@ -194,18 +187,19 @@ def deduplicate_bcf(vcfprefix: str, removed_df: pd.DataFrame) -> None:
 # Downloads the BCF/VEP for a single chunk and processes it.
 # Returns a dict of the chunk name and start coordinate. This is so the name can be provided for merging, sorted by
 # start coordinate so sorting doesn't have to happen twice
-def make_bgen_from_vcf(vcf_id: str, vep_id: str, start: int) -> dict:
+def make_bgen_from_vcf(vcf_id: str, vep_id: str, start: int, original_prefix: str, make_bcf: bool) -> dict:
 
     vcf = dxpy.DXFile(vcf_id.rstrip())
 
     # Set names and DXPY files for bcf/vep file
-    LOGGER.info(f'Processing bcf: {vcf.describe()["name"]}')
     vcfprefix = vcf.describe()['name'].rstrip('.bcf')  # Get a prefix name for all files
     dxpy.download_dxfile(vcf.get_id(), f'{vcfprefix}.bcf')
+    if make_bcf:
+        dxpy.download_dxfile(find_index(vcf, 'csi').get_id(), f'{vcfprefix}.bcf.csi')
 
     # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
     current_df = load_vep(vep_id)
-    previous_df = load_vep(get_previous_vep(vcfprefix))
+    previous_df = load_vep(get_previous_vep(original_prefix))
     removed_df = deduplicate_vep(current_df, previous_df, vcfprefix)
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
         deduplicate_bcf(vcfprefix, removed_df)
@@ -217,11 +211,12 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, start: int) -> dict:
           f'--vcf-half-call r ' \
           f'--out /test/{vcfprefix} ' \
           f'--set-all-var-ids @:#:\$r:\$a ' \
-          f'--new-id-max-allele-len 500'
+          f'--new-id-max-allele-len 1500'
     run_cmd(cmd, is_docker=True, docker_image='egardner413/mrcepid-burdentesting:latest')
 
-    # Delete the original .bcf from the instance to save space
-    Path(f'{vcfprefix}.bcf').unlink()
+    # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
+    if not make_bcf:
+        Path(f'{vcfprefix}.bcf').unlink()
 
     # Return both the processed prefix and the start coordinate to enable easy merging/sorting
     return {'vcfprefix': vcfprefix,
@@ -230,13 +225,15 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, start: int) -> dict:
 
 # Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations
 # bgen_prefixes is a dictionary of form {vcfprefix: start_coordinate}
-def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
+def make_final_bgen(bgen_prefixes: dict, chromosome: str, make_bcf: bool) -> None:
 
     vep_files = []  # A list containing pandas DataFrames that will be concatenated together
 
     # How this works: we just keep adding each chunk .bgen file to the end of the cat-bgen command since it doesn't
     # appear to accept a file-list as an input, rather than command-line
-    cmd = "cat-bgen"
+    cmd = 'cat-bgen'
+    # No harm if making this command even if make_bcf == false
+    bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{chromosome}.filtered.bcf'
     sorted_bgen_prefixes = sorted(bgen_prefixes)
 
     for i in range(0, len(sorted_bgen_prefixes)):
@@ -244,6 +241,7 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
             cp_cmd = f'cp {sorted_bgen_prefixes[i]}.sample {chromosome}.filtered.sample'
             run_cmd(cp_cmd, is_docker=False)
         cmd += f' -g /test/{sorted_bgen_prefixes[i]}.bgen'
+        bcf_cmd += f' /test/{sorted_bgen_prefixes[i]}.bcf'
 
         # Collect VEP annotations at this time
         vep_files.append(pd.read_csv(sorted_bgen_prefixes[i] + ".vep.tsv", sep="\t"))
@@ -268,9 +266,17 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str) -> None:
     cmd = f'tabix -c C -s 1 -b 2 -e -2 /test/{chromosome}.filtered.vep.tsv.gz'
     run_cmd(cmd, is_docker=True, docker_image='egardner413/mrcepid-burdentesting:latest')
 
+    # Now, if make_bcf == True, then we actually do the concatentation
+    if make_bcf:
+        run_cmd(bcf_cmd, is_docker=True, docker_image='egardner413/mrcepid-burdentesting:latest')
+
+        # And index:
+        bcf_idx = f'bcftools index /test/{chromosome}.filtered.bcf'
+        run_cmd(bcf_idx, is_docker=True, docker_image='egardner413/mrcepid-burdentesting:latest')
+
 
 @dxpy.entry_point('main')
-def main(chromosome, coordinate_file):
+def main(chromosome, coordinate_file, make_bcf):
 
     # Grab resources required for this applet
     LOGGER.info(f'Ingesting applet resources')
@@ -291,7 +297,9 @@ def main(chromosome, coordinate_file):
             thread_utility.launch_job(make_bgen_from_vcf,
                                       vcf_id=row['bcf_dxpy'],
                                       vep_id=row['vep_dxpy'],
-                                      start=row['start'])
+                                      start=row['start'],
+                                      original_prefix=row['fileprefix'],
+                                      make_bcf=make_bcf)
 
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
     bgen_prefixes = {}
@@ -300,14 +308,18 @@ def main(chromosome, coordinate_file):
 
     # Now mash all the bgen files together
     LOGGER.info(f'Merging bgen files for chromosome {chromosome} together...')
-    make_final_bgen(bgen_prefixes, chromosome)
+    make_final_bgen(bgen_prefixes, chromosome, make_bcf)
 
     # Set output
-    output = {"bgen": dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.bgen')),
-              "index": dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.bgen.bgi')),
-              "sample": dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.sample')),
-              "vep": dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.vep.tsv.gz')),
-              "vep_idx": dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.vep.tsv.gz.tbi'))}
+    output = {'bgen': dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.bgen')),
+              'index': dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.bgen.bgi')),
+              'sample': dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.sample')),
+              'vep': dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.vep.tsv.gz')),
+              'vep_idx': dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.vep.tsv.gz.tbi'))}
+
+    if Path(f'{chromosome}.filtered.bcf').exists():
+        output['bcf'] = dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.bcf'))
+        output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(f'{chromosome}.filtered.bcf.csi'))
 
     return output
 

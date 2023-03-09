@@ -7,6 +7,7 @@ https://documentation.dnanexus.com/.
 ### Table of Contents
 
 - [Introduction](#introduction)
+  * [Changelog](#changelog)
   * [Background](#background)
   * [Dependencies](#dependencies)
     + [Docker](#docker)
@@ -38,6 +39,23 @@ dx describe file-1234567890ABCDEFGHIJKLMN
 
 **Note:** This README pertains to data included as part of the DNANexus project "MRC - Variant Filtering" (project-G2XK5zjJXk83yZ598Z7BpGPk)
 
+### Changelog
+
+* v1.1.1
+  * Added `make_bcf` command-line option to also create a concatenated bcf. 
+    * **WARNING** This should be used with extreme caution as the file may be very large and take a long time to concatenate
+    * The default function is as before (bgen/VEP tsv only)
+    * This is intended primarily for debug purposes / special-case projects
+
+* v1.1.0
+  * Code modernisation including:
+    * Implementation of the [GeneralUtilities](https://github.com/mrcepid-rap/general_utilities) suite of helper functions/classes
+    * Removal of antiquated functions/methods in the code base
+    * Cleaning up code to be more in-line with PEP standards
+
+* v1.0.0
+  * Initial release of the public version of this app
+
 ### Background
 
 VCF and BCF format files take up a comparitively large amount of space due to a large number of FORMAT fields attached to
@@ -50,7 +68,7 @@ for burden testing.
 Please see the [.bgen format specification](https://www.well.ox.ac.uk/~gav/bgen_format/) for more information on these files.
 For the purposes of compatibility with several other pipelines, we use the following .bgen format specifications:
 * version 1.2
-* ref-last – plink2 default
+* ref-last – plink2 default (**Note:** UK Biobank imputation bgen files are 'ref-first', which may lead to confusion when adapting code from this repository and others!)
 * 8 bit precision – for compatibility with most burden testing tools
 
 For information on the fields included in the .tsv annotation, please see our documentation for [mrcepid-filterbcf](https://github.com/mrcepid-rap/mrcepid-filterbcf).
@@ -119,12 +137,11 @@ As part of step (2), the corresponding VEP annotations are merged as a DataFrame
 
 ### Inputs
 
-All inputs for this applet are required:
-
-| input            | description                                                                                                    |
-|------------------|----------------------------------------------------------------------------------------------------------------|
-| chromosome       | a chromosome to be merged as part of this process. **MUST** be formated with the `chr` prefix (e.g. `chr1`)    |
-| coordinate_file  | a gzipped .tsv file of file coordinates and DNANexus file-ids to merge. See below for the format of this file. |
+| input           | description                                                                                                    |
+|-----------------|----------------------------------------------------------------------------------------------------------------|
+| chromosome      | a chromosome to be merged as part of this process. **MUST** be formated with the `chr` prefix (e.g. `chr1`)    |
+| coordinate_file | a gzipped .tsv file of file coordinates and DNANexus file-ids to merge. See below for the format of this file. |
+| make_bcf        | Make a bcf file with identical sites/genotypes to the output bgen? **[False]**                                 |
 
 Each job from [mrcepid-filterbcf](https://github.com/mrcepid-rap/mrcepid-filterbcf) will produce a single coordinates file
 for the files processed in that job. The user must merge these files on their own to provide the required input for this 
@@ -173,13 +190,17 @@ This applet generates two primary outputs per chromosome:
 
 These files are accompanied by various indices as indicated below:
 
-| output  | description                                                                                           |
-|---------|-------------------------------------------------------------------------------------------------------|
-| bgen    | the `.bgen` format file                                                                               |
-| index   | The corresponding .bgi index for the .bgen format file                                                |
-| sample  | A sample file for the .bgen                                                                           |
-| vep     | A bgzipped `.tsv.gz` of annotations for all variants included in the corresponding `.bgen` file       |
-| vep_idx | A [tabix index](http://www.htslib.org/doc/tabix.html) for the `.tsv.gz` allowing query by coordinate. |
+| output   | description                                                                                          |
+|----------|------------------------------------------------------------------------------------------------------|
+| bgen     | the `.bgen` format file                                                                              |
+| index    | The corresponding .bgi index for the .bgen format file                                               |
+| sample   | A sample file for the .bgen                                                                          |
+| vep      | A bgzipped `.tsv.gz` of annotations for all variants included in the corresponding `.bgen` file      |
+| vep_idx  | A [tabix index](http://www.htslib.org/doc/tabix.html) for the `.tsv.gz` allowing query by coordinate |
+| bcf      | _Optional_: A concatenated BCF file with identical variants/genotypes to bgen                        |
+| bcf_indx | _Optional_: The index for the concatenated BCF file                                                  |
+
+
 
 ### Command line example
 

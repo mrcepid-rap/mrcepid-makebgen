@@ -3,27 +3,28 @@
   "title": "MakeBGEN",
   "summary": "Makes a sorted BGEN file from a list of vcfs",
   "dxapi": "1.0.0",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "inputSpec": [
     {
       "name": "chromosome",
-      "label": "chromosome to merge",
+      "label": "Chromosome to merge",
       "class": "string",
       "optional": false,
-      "help": "chromosome to merge"
+      "help": "Chromosome to merge. Must be provided to aid parallelization."
     },
     {
       "name": "coordinate_file",
       "label": "list of bcf files to merge into bgen",
       "class": "file",
-      "optional": true,
-      "help": "formatted list of bcf files to merge into bgen. See README for format.",
-      "default": {
-        "$dnanexus_link": {
-          "project": "project-G6BJF50JJv8p4PjGB9yy7YQ2",
-          "id": "file-G7x5910JJv8XZkq44949xbJq"
-        }
-      }
+      "optional": false,
+      "help": "Formatted list of bcf files to merge into bgen. See README for format."
+    },
+    {
+      "name": "make_bcf",
+      "label": "Make concatenated BCF in addition to bgen?",
+      "class": "boolean",
+      "default": false,
+      "help": "Make a concatenated BCF in addition to bgen. WARNING: This can lead to very long runtimes if enabled and is intended for testing only."
     }
   ],
   "outputSpec": [
@@ -76,6 +77,24 @@
         "*.tsv.gz.tbi"
       ],
       "help": "Output vep annotations index"
+    },
+    {
+      "name": "bcf",
+      "label": "Output bcf (if requested)",
+      "class": "file",
+      "optional": true,
+      "patterns": [
+        "*.bcf"
+      ]
+    },
+    {
+      "name": "bcf_idx",
+      "label": "Output bcf index (if requested)",
+      "class": "file",
+      "optional": true,
+      "patterns": [
+        "*.bcf.csi"
+      ]
     }
   ],
   "access": {
