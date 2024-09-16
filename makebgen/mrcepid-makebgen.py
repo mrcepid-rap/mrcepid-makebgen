@@ -153,7 +153,8 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
     into a single .bgen file.
 
     Coordinate file must have the following columns:
-    <TBD>
+
+        chrom   start   end     vcf_prefix      output_bcf      output_bcf_idx  output_vep      output_vep_idx
 
     :param chromosome: Chromosome to process. This is used to filter the coordinate file for the correct files.
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
@@ -161,10 +162,8 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
     :return: An output dictionary following DNANexus conventions.
     """
 
-    # Convert all input bcfs to bgen
-    LOGGER.info(f'Converting chromosome {chromosome} bcf(s) to bgen(s)')
-
     # Get the processed coordinate file
+    total_bcf = 0
     coordinate_path = download_dxfile_by_name(coordinate_file)
     with gzip.open(coordinate_path, mode='rt') as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
@@ -174,20 +173,23 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
                                        error_message='A bcf to bgen thread failed')
         previous_vep_id = None
         for row in coord_file_reader:
-            if row['#chrom'] == chromosome:
-                thread_utility.launch_job(make_bgen_from_vcf,
-                                          vcf_id=row['output_bcf'],
-                                          vcf_idx_id=row['output_bcf_idx'],
-                                          vep_id=row['output_vep'],
-                                          previous_vep_id=previous_vep_id,
-                                          start=row['start'],
-                                          make_bcf=make_bcf)
-                previous_vep_id = row['output_vep']
+            total_bcf+=1
+            thread_utility.launch_job(make_bgen_from_vcf,
+                                      vcf_id=row['output_bcf'],
+                                      vcf_idx_id=row['output_bcf_idx'],
+                                      vep_id=row['output_vep'],
+                                      previous_vep_id=previous_vep_id,
+                                      start=row['start'],
+                                      make_bcf=make_bcf)
+            previous_vep_id = row['output_vep']
 
         # And gather the resulting futures which are returns of all bgens we need to concatenate:
         bgen_prefixes = {}
         for result in thread_utility:
             bgen_prefixes[result['vcfprefix']] = result['start']
+
+    # Convert all input bcfs to bgen
+    LOGGER.info(f'Converting {total_bcf} bcf(s) to single bgen')
 
     # Now mash all the bgen files together
     LOGGER.info(f'Merging bgen files for chromosome {chromosome} together...')
