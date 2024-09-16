@@ -58,7 +58,6 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
           f'--export bgen-1.2 \'bits=\'8 ' \
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
-          f'--set-all-var-ids @_#_\$r_\$a ' \
           f'--new-id-max-allele-len 1500'
     CMD_EXEC.run_cmd_on_docker(cmd)
 
