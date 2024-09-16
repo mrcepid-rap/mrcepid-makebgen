@@ -29,7 +29,7 @@ LOGGER = MRCLogger().get_logger()
 CMD_EXEC = build_default_command_executor()
 
 
-def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, original_prefix: str, make_bcf: bool) -> Dict[str, int]:
+def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
     Returns a dict of the chunk name and start coordinate. This is so the name can be provided for merging, sorted by
@@ -39,7 +39,6 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     :param vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the VCF
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param start: Start coordinate for this chunk
-    :param original_prefix: The original prefix for the VCF file
     :param make_bcf: Is a bcf being made for this chromosome?
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
@@ -177,14 +176,13 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
         for row in coord_file_reader:
             if row['#chrom'] == chromosome:
                 thread_utility.launch_job(make_bgen_from_vcf,
-                                          vcf_id=row['bcf_dxpy'],
-                                          vcf_idx_id=row['bcf_idx_dxpy'],
-                                          vep_id=row['vep_dxpy'],
+                                          vcf_id=row['output_bcf'],
+                                          vcf_idx_id=row['output_bcf_idx'],
+                                          vep_id=row['output_vep'],
                                           previous_vep_id=previous_vep_id,
                                           start=row['start'],
-                                          original_prefix=row['fileprefix'],
-                                          make_bcf=make_bcf,)
-                previous_vep_id = row['vep_dxpy']
+                                          make_bcf=make_bcf)
+                previous_vep_id = row['output_vep']
 
         # And gather the resulting futures which are returns of all bgens we need to concatenate:
         bgen_prefixes = {}
