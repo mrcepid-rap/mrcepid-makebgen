@@ -52,6 +52,7 @@ def load_vep(vep_id: str) -> pd.DataFrame:
 
         # We stream the .vep annotation from dnanexus as it is faster for smaller files like this, and ensures that we don't
         # generate race conditions when loading the same file twice (which we do to check for duplicates...)
+        #
         # Note to future devs – DO NOT remove gzip eventhough pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
         current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", header=None, names=vep_header)
