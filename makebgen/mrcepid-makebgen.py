@@ -22,7 +22,8 @@ from general_utilities.association_resources import (
     generate_linked_dx_file,
     bgzip_and_tabix,
     download_dxfile_by_name,
-    replace_multi_suffix
+    replace_multi_suffix,
+    check_gzipped
 )
 
 LOGGER = MRCLogger().get_logger()
@@ -165,7 +166,7 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
     # Get the processed coordinate file
     total_bcf = 0
     coordinate_path = download_dxfile_by_name(coordinate_file)
-    with gzip.open(coordinate_path, mode='rt') as coord_file:
+    with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
 
         thread_utility = ThreadUtility(incrementor=10,
