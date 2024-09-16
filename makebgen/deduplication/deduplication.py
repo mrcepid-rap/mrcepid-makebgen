@@ -22,6 +22,8 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) ->
     # Load relevant VEP annotations
     current_df = load_vep(vep_id)
     previous_df = load_vep(previous_vep_id)
+    LOGGER.info(f'Loaded VEP annotations for {vep_id}')
+    LOGGER.info(f'Loaded prev VEP annotations for {previous_vep_id}')
     removed_df = remove_vep_duplicates(current_df, previous_df, vcf_prefix)
 
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
