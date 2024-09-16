@@ -26,6 +26,7 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) ->
 
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
         LOGGER.warning(f'BCF with prefix {vcf_prefix} has duplicate variants. Removing...')
+        LOGGER.warning(removed_df)
         remove_query_string = build_query_string(removed_df)
         remove_bcf_duplicates(remove_query_string, vcf_prefix)
 
