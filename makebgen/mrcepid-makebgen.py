@@ -18,8 +18,12 @@ from makebgen.deduplication.deduplication import deduplicate_variants
 from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.job_management.command_executor import build_default_command_executor
 from general_utilities.mrc_logger import MRCLogger
-from general_utilities.association_resources import generate_linked_dx_file, find_index, bgzip_and_tabix, \
-    download_dxfile_by_name, replace_multi_suffix
+from general_utilities.association_resources import (
+    generate_linked_dx_file,
+    bgzip_and_tabix,
+    download_dxfile_by_name,
+    replace_multi_suffix
+)
 
 LOGGER = MRCLogger().get_logger()
 CMD_EXEC = build_default_command_executor()
