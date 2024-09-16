@@ -44,7 +44,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
-    vcf_path = download_dxfile_by_name(vcf_id)
+    vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
 
     # Set names and DXPY files for bcf/vep file
     vcf_prefix = replace_multi_suffix(vcf_path, '')  # Get a prefix name for all files
@@ -177,7 +177,6 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
             total_bcf+=1
             thread_utility.launch_job(make_bgen_from_vcf,
                                       vcf_id=row['output_bcf'],
-                                      vcf_idx_id=row['output_bcf_idx'],
                                       vep_id=row['output_vep'],
                                       previous_vep_id=previous_vep_id,
                                       start=row['start'],
