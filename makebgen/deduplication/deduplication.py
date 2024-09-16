@@ -3,6 +3,7 @@ import dxpy
 import pandas as pd
 
 from pathlib import Path
+from typing import Tuple
 from general_utilities.job_management.command_executor import build_default_command_executor
 from general_utilities.mrc_logger import MRCLogger
 
@@ -10,7 +11,7 @@ LOGGER = MRCLogger().get_logger()
 CMD_EXEC = build_default_command_executor()
 
 
-def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) -> None:
+def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) -> Path:
     """Entry point into the various deduplication methods in this module. This method only handles the logic flow of
     running the other methods.
 
@@ -22,15 +23,14 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) ->
     # Load relevant VEP annotations
     current_df = load_vep(vep_id)
     previous_df = load_vep(previous_vep_id)
-    LOGGER.info(f'Loaded VEP annotations for {vep_id}')
-    LOGGER.info(f'Loaded prev VEP annotations for {previous_vep_id}')
-    removed_df = remove_vep_duplicates(current_df, previous_df, vcf_prefix)
+    deduped_df, removed_df = remove_vep_duplicates(current_df, previous_df)
 
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
         LOGGER.warning(f'BCF with prefix {vcf_prefix} has {len(removed_df)} duplicate variants. Removing...')
-        LOGGER.warning(removed_df)
         remove_query_string = build_query_string(removed_df)
         remove_bcf_duplicates(remove_query_string, vcf_prefix)
+
+    return write_vep_table(deduped_df, vcf_prefix)
 
 
 def load_vep(vep_id: str) -> pd.DataFrame:
@@ -45,12 +45,9 @@ def load_vep(vep_id: str) -> pd.DataFrame:
     :param vep_id: The dxid of the VEP annotation file.
     :return: An optional pandas DataFrame of the VEP annotation. If vep_id is None, return None.
     """
-    vep_header = ['CHROM', 'POS', 'REF', 'ALT', 'ID', 'FILTER', 'AF', 'F_MISSING', 'AN', 'AC', 'MANE',
-                  'ENST', 'ENSG', 'BIOTYPE', 'SYMBOL', 'CSQ', 'gnomAD_AF', 'CADD', 'REVEL', 'SIFT', 'POLYPHEN',
-                  'LOFTEE', 'AA', 'AApos', 'PARSED_CSQ', 'MULTI', 'INDEL', 'MINOR', 'MAJOR', 'MAF', 'MAC']
 
     if vep_id is None:
-        return pd.DataFrame(columns = vep_header)
+        return pd.DataFrame()
     else:
 
         # We stream the .vep annotation from dnanexus as it is faster for smaller files like this, and ensures that we don't
@@ -58,14 +55,14 @@ def load_vep(vep_id: str) -> pd.DataFrame:
         #
         # Note to future devs – DO NOT remove gzip eventhough pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", header=None, names=vep_header)
+        current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", index_col=False)
 
         return current_df
 
 
 # Helper function for process_vep() to remove duplicate variants
-def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: pd.DataFrame,
-                            vcf_prefix: Path) -> pd.DataFrame:
+def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: pd.DataFrame) \
+        -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Check for duplicate variants in the VEP annotation and remove them.
 
     See in-line comments for specific details on how duplicates are removed. In brief, we remove two types of duplicates:
@@ -81,7 +78,6 @@ def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: pd.Data
 
     :param current_vep_df: A pandas DataFrame of the current VEP annotation.
     :param previous_vep_df: A pandas DataFrame of the previous VEP annotation.
-    :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate.
     :return: A pandas DataFrame of the removed duplicate variants.
     """
 
@@ -155,10 +151,21 @@ def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: pd.Data
     # Merge the duplicate variants from both mode 1. & 2.:
     removed_variants = pd.concat([removed_variants, duplicates])
 
-    # And write the final vep file
-    current_vep_df.to_csv(path_or_buf=f'{vcf_prefix}.vep.tsv', na_rep='NA', index=False, sep="\t")
+    return current_vep_df, removed_variants
 
-    return removed_variants
+
+def write_vep_table(deduplicated_vep: pd.DataFrame, vcf_prefix: Path) -> Path:
+    """Write a vep file to disk.
+
+    :param deduplicated_vep: A pandas DataFrame of the deduplicated VEP annotation.
+    :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate.
+    :return: Path to the written VEP annotation file.
+    """
+
+    vcf_path = vcf_prefix.with_suffix('.vep.tsv')
+    deduplicated_vep.to_csv(path_or_buf=vcf_path, na_rep='NA', index=False, sep="\t")
+
+    return vcf_path
 
 
 def build_query_string(removed_df: pd.DataFrame) -> str:
