@@ -169,7 +169,7 @@ def write_vep_table(deduplicated_vep: pd.DataFrame, vcf_prefix: Path) -> Path:
     :return: Path to the written VEP annotation file.
     """
 
-    vcf_path = vcf_prefix.with_suffix('.vep.tsv')
+    vcf_path = vcf_prefix.with_suffix('.'.join(vcf_prefix.suffixes + ['vep','tsv']))
     deduplicated_vep.to_csv(path_or_buf=vcf_path, na_rep='NA', index=False, sep="\t")
 
     return vcf_path

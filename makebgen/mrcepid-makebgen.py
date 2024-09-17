@@ -139,7 +139,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
         final_bcf = Path(f'{output_prefix}.filtered.bcf')
         final_bcf_idx = Path(f'{output_prefix}.filtered.bcf.csi')
         bcf_cmd = ' '.join([f'-g /test/{file}.bcf' for file in sorted_bgen_prefixes])
-        bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{chromosome}.filtered.bcf {bcf_cmd}'
+        bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{output_prefix}.filtered.bcf {bcf_cmd}'
         cmd_exec.run_cmd_on_docker(bcf_cmd)
 
         # And index:
@@ -176,7 +176,7 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
     with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
 
-        thread_utility = ThreadUtility(incrementor=10,
+        thread_utility = ThreadUtility(incrementor=100,
                                        thread_factor=2,
                                        error_message='A bcf to bgen thread failed')
         previous_vep_id = None
