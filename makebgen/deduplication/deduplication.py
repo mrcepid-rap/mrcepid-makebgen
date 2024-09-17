@@ -3,21 +3,24 @@ import dxpy
 import pandas as pd
 
 from pathlib import Path
-from typing import Tuple
-from general_utilities.job_management.command_executor import build_default_command_executor
+from typing import Tuple, Optional
+from general_utilities.job_management.command_executor import build_default_command_executor, CommandExecutor
 from general_utilities.mrc_logger import MRCLogger
 
 LOGGER = MRCLogger().get_logger()
 CMD_EXEC = build_default_command_executor()
 
 
-def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) -> Path:
+def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
+                         cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
     """Entry point into the various deduplication methods in this module. This method only handles the logic flow of
     running the other methods.
 
     :param vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the VCF
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate
+    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
+    :return: Path to the written VEP annotation file.
     """
 
     # Load relevant VEP annotations
@@ -28,12 +31,12 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path) ->
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
         LOGGER.warning(f'BCF with prefix {vcf_prefix} has {len(removed_df)} duplicate variants. Removing...')
         remove_query_string = build_query_string(removed_df)
-        remove_bcf_duplicates(remove_query_string, vcf_prefix)
+        remove_bcf_duplicates(remove_query_string, vcf_prefix, cmd_exec)
 
     return write_vep_table(deduped_df, vcf_prefix)
 
 
-def load_vep(vep_id: str) -> pd.DataFrame:
+def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
     """Read a VEP annotation into a pandas DataFrame.
 
     This method is a simple wrapper for :func:`pd.read_csv` which will *stream* a vep annotation for the given
@@ -42,18 +45,21 @@ def load_vep(vep_id: str) -> pd.DataFrame:
     For the first VEP annotation file for a given chromosome, this method will return an empty DataFrame as it is not
     possible for duplicates to exist.
 
+    To be clear, the reason this method has an optional return, rather than a set column definition, is because the
+    names of the columns are not guaranteed to be the same between different runs. This is due to additional annotations
+    being parameterized.
+
     :param vep_id: The dxid of the VEP annotation file.
     :return: An optional pandas DataFrame of the VEP annotation. If vep_id is None, return None.
     """
 
     if vep_id is None:
-        return pd.DataFrame()
+        return None
     else:
-
         # We stream the .vep annotation from dnanexus as it is faster for smaller files like this, and ensures that we don't
         # generate race conditions when loading the same file twice (which we do to check for duplicates...)
         #
-        # Note to future devs – DO NOT remove gzip eventhough pandas can direct read gzip. It is not compatible with
+        # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
         current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", index_col=False)
 
@@ -61,7 +67,7 @@ def load_vep(vep_id: str) -> pd.DataFrame:
 
 
 # Helper function for process_vep() to remove duplicate variants
-def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: pd.DataFrame) \
+def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: Optional[pd.DataFrame]) \
         -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Check for duplicate variants in the VEP annotation and remove them.
 
@@ -145,8 +151,9 @@ def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: pd.Data
     #    Just a note on this: Unfortunately, I don't think I can retrospectively go back and remove variants from the
     #    previous file by identical criteria. I just have to go with 'remove the second instance' for this type of
     #    duplicate.
-    duplicates = current_vep_df[current_vep_df['ID'].isin(previous_vep_df['ID'].to_list())]
-    current_vep_df = current_vep_df[current_vep_df.index.isin(duplicates.index.to_list()) == False]
+    if previous_vep_df is not None:
+        duplicates = current_vep_df[current_vep_df['ID'].isin(previous_vep_df['ID'].to_list())]
+        current_vep_df = current_vep_df[current_vep_df.index.isin(duplicates.index.to_list()) == False]
 
     # Merge the duplicate variants from both mode 1. & 2.:
     removed_variants = pd.concat([removed_variants, duplicates])
@@ -186,11 +193,11 @@ def build_query_string(removed_df: pd.DataFrame) -> str:
         position = table['POS']
         ref = table['REF']
         alt = table['ALT']
-        og_id = table['ID']
+        ma_id = table['MA']
 
         # Generate a query that matches on position, ref, alt, and og_id. I am fairly certain (I have checked multiple
-        # files) that all duplicates come from different multi-allelics, so this _should_ be safe...
-        query = f'(POS={position} && REF="{ref}" && ALT="{alt}" && ID="{og_id}")'
+        # files) that all duplicates come from different multi-allelics (e.g., MA), so this _should_ be safe...
+        query = f'(POS={position} && REF="{ref}" && ALT="{alt}" && MA="{ma_id}")'
         query_builder.append(query)
 
     query = ' || '.join(query_builder)
@@ -199,20 +206,23 @@ def build_query_string(removed_df: pd.DataFrame) -> str:
 
 
 # Helper function for make_bgen_from_vcf() to remove sites identified as duplicate in process_vep() from the bcf
-def remove_bcf_duplicates(query_string: str, vcf_prefix: Path) -> None:
+def remove_bcf_duplicates(query_string: str, vcf_prefix: Path,
+                          cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
     """Remove duplicate variants using bcftools view.
 
     This method is just a wrapper for the bcftools view command to remove duplicate variants from the BCF file. Following
     deduplication, the original BCF file is deleted and the deduplicated BCF is renamed to the original BCF name.
 
     :param query_string: The query string to pass to bcftools view from :func:`build_query_string`.
+    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate.
+    :return: Path to the deduplicated BCF file.
     """
 
     cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_prefix}.bcf'
-    CMD_EXEC.run_cmd_on_docker(cmd)
+    cmd_exec.run_cmd_on_docker(cmd)
 
     # And rename the deduped bcf to match the final one we want to output
     old_vcf = Path(f'{vcf_prefix}.bcf')
     old_vcf.unlink()
-    Path(f'{vcf_prefix}.deduped.bcf').rename(old_vcf)
+    return Path(f'{vcf_prefix}.deduped.bcf').rename(old_vcf)
