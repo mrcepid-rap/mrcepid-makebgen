@@ -27,6 +27,8 @@ from general_utilities.association_resources import (
 )
 
 LOGGER = MRCLogger().get_logger()
+# Small note to explain logic – When CMD EXEC is passed to functions, it is to enable functional testing rather than
+# end-to-end testing outside the DNANexus environment. During 'normal' execution the global CMD_EXEC is used.
 CMD_EXEC = build_default_command_executor()
 
 
@@ -51,7 +53,6 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     # Set names and DXPY files for bcf/vep file
     # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
     vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
-    LOGGER.info(vcf_prefix)
 
     # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
     deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
