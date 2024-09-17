@@ -16,7 +16,7 @@ from pathlib import Path
 
 from makebgen.deduplication.deduplication import deduplicate_variants
 from general_utilities.job_management.thread_utility import ThreadUtility
-from general_utilities.job_management.command_executor import build_default_command_executor
+from general_utilities.job_management.command_executor import build_default_command_executor, CommandExecutor
 from general_utilities.mrc_logger import MRCLogger
 from general_utilities.association_resources import (
     generate_linked_dx_file,
@@ -30,7 +30,8 @@ LOGGER = MRCLogger().get_logger()
 CMD_EXEC = build_default_command_executor()
 
 
-def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool) -> Dict[str, int]:
+def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
+                       cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
     Returns a dict of the chunk name and start coordinate. This is so the name can be provided for merging, sorted by
@@ -41,6 +42,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param start: Start coordinate for this chunk
     :param make_bcf: Is a bcf being made for this chromosome?
+    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
@@ -59,7 +61,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
           f'--new-id-max-allele-len 1500'
-    CMD_EXEC.run_cmd_on_docker(cmd)
+    cmd_exec.run_cmd_on_docker(cmd)
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
     if not make_bcf:
@@ -70,7 +72,8 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
             'start': start}
 
 
-def make_final_bgen(bgen_prefixes: dict, chromosome: str, make_bcf: bool) -> Dict[str, Dict[str, Path]]:
+def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
+                    cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
     """Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations into a single .tsv file.
 
     VEP annotation concatenation ASSUMES that file prefixes are sorted by coordinate. This is a safe assumption as the
@@ -82,35 +85,36 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str, make_bcf: bool) -> Dic
         * 'index' - points to the index of the final bgen, vep, and (if requested) bcf files respectively.
 
     :param bgen_prefixes: a dictionary of form {vcfprefix: start_coordinate}
-    :param chromosome: Current chromosome for this concatenation
+    :param output_prefix: The prefix for the final bgen file. Will be named <output_prefix>.bgen.
     :param make_bcf: Should a bcf be made in addition to bgen? This can lead to VERY long runtimes if the number of
         sites is large.
+    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A named dict containing the final bgen, vep, (and if requested) bcf file paths with associated indices.
     """
 
     # Set output names here:
-    final_bgen = Path(f'{chromosome}.filtered.bgen')
-    final_bgen_idx = Path(f'{chromosome}.filtered.bgen.bgi')
+    final_bgen = Path(f'{output_prefix}.filtered.bgen')
+    final_bgen_idx = Path(f'{output_prefix}.filtered.bgen.bgi')
 
     # Sort the bgen files according to coordinate
     sorted_bgen_prefixes = sorted(bgen_prefixes)
 
     # Create a sample file for the final bgen
-    final_sample = Path(f'{chromosome}.filtered.sample')
+    final_sample = Path(f'{output_prefix}.filtered.sample')
     shutil.copy(Path(f'{sorted_bgen_prefixes[0]}.sample'),
                 final_sample)
 
     # Create a command line for concatenating bgen files and execute
     cmd = ' '.join([f'-g /test/{file}.bgen' for file in sorted_bgen_prefixes])
     cmd = f'cat-bgen {cmd} -og /test/{final_bgen}'
-    CMD_EXEC.run_cmd_on_docker(cmd)
+    cmd_exec.run_cmd_on_docker(cmd)
 
     # And index the bgen for random query later
     cmd = f'bgenix -index -g /test/{final_bgen}'
-    CMD_EXEC.run_cmd_on_docker(cmd)
+    cmd_exec.run_cmd_on_docker(cmd)
 
     # Collect & concat VEP annotations at this time
-    concat_vep = Path(f'{chromosome}.filtered.vep.tsv')
+    concat_vep = Path(f'{output_prefix}.filtered.vep.tsv')
     vep_writer = concat_vep.open('w')
     for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
@@ -129,15 +133,15 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str, make_bcf: bool) -> Dic
 
     # If make_bcf == True, then we actually do the bcf concatenation
     if make_bcf:
-        final_bcf = Path(f'{chromosome}.filtered.bcf')
-        final_bcf_idx = Path(f'{chromosome}.filtered.bcf.csi')
+        final_bcf = Path(f'{output_prefix}.filtered.bcf')
+        final_bcf_idx = Path(f'{output_prefix}.filtered.bcf.csi')
         bcf_cmd = ' '.join([f'-g /test/{file}.bcf' for file in sorted_bgen_prefixes])
         bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{chromosome}.filtered.bcf {bcf_cmd}'
-        CMD_EXEC.run_cmd_on_docker(bcf_cmd)
+        cmd_exec.run_cmd_on_docker(bcf_cmd)
 
         # And index:
-        bcf_idx = f'bcftools index /test/{chromosome}.filtered.bcf'
-        CMD_EXEC.run_cmd_on_docker(bcf_idx)
+        bcf_idx = f'bcftools index /test/{output_prefix}.filtered.bcf'
+        cmd_exec.run_cmd_on_docker(bcf_idx)
 
     else:
         final_bcf = None
@@ -149,7 +153,7 @@ def make_final_bgen(bgen_prefixes: dict, chromosome: str, make_bcf: bool) -> Dic
 
 
 @dxpy.entry_point('main')
-def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
+def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -157,7 +161,7 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
 
         chrom   start   end     vcf_prefix      output_bcf      output_bcf_idx  output_vep      output_vep_idx
 
-    :param chromosome: Chromosome to process. This is used to filter the coordinate file for the correct files.
+    :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
     :return: An output dictionary following DNANexus conventions.
@@ -192,8 +196,8 @@ def main(chromosome: str, coordinate_file: dict, make_bcf: bool) -> dict:
     LOGGER.info(f'Converting {total_bcf} bcf(s) to single bgen')
 
     # Now mash all the bgen files together
-    LOGGER.info(f'Merging bgen files for chromosome {chromosome} together...')
-    final_files = make_final_bgen(bgen_prefixes, chromosome, make_bcf)
+    LOGGER.info(f'Merging bgen files into {output_prefix}.bgen...')
+    final_files = make_final_bgen(bgen_prefixes, output_prefix, make_bcf)
 
     # Set output
     output = {'bgen': dxpy.dxlink(generate_linked_dx_file(final_files['bgen']['file'])),
