@@ -122,7 +122,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
         current_vep = Path(f'{bgen_prefix}.vep.tsv')
-        with gzip.open(current_vep, mode='rt') as vep_reader:
+        with current_vep.open('r') as vep_reader:
             for line_n, line in enumerate(vep_reader):
                 if file_n == 0 and line_n == 0:  # Only write header of first file
                     vep_writer.write(line)
