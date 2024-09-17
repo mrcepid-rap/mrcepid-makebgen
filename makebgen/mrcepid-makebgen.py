@@ -9,7 +9,6 @@
 import os
 import csv
 import dxpy
-import gzip
 import shutil
 from typing import Dict
 from pathlib import Path
