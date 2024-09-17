@@ -49,7 +49,9 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
 
     # Set names and DXPY files for bcf/vep file
-    vcf_prefix = replace_multi_suffix(vcf_path, '')  # Get a prefix name for all files
+    # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
+    vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
+    LOGGER.info(vcf_prefix)
 
     # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
     deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
