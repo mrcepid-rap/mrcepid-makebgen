@@ -63,6 +63,9 @@ def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
         # dxpy.open_dxfile and will error out.
         current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", index_col=False)
 
+        # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
+        current_df.rename(columns={'ID':'varID'}, inplace=True)
+
         return current_df
 
 
