@@ -117,16 +117,16 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
 
     # Collect & concat VEP annotations at this time
     concat_vep = Path(f'{output_prefix}.filtered.vep.tsv')
-    vep_writer = concat_vep.open('w')
-    for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
+    with concat_vep.open('w') as vep_writer:
+        for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
-        current_vep = Path(f'{bgen_prefix}.vep.tsv')
-        with current_vep.open('r') as vep_reader:
-            for line_n, line in enumerate(vep_reader):
-                if file_n == 0 and line_n == 0:  # Only write header of first file
-                    vep_writer.write(line)
-                elif line_n != 0:
-                    vep_writer.write(line)
+            current_vep = Path(f'{bgen_prefix}.vep.tsv')
+            with current_vep.open('r') as vep_reader:
+                for line_n, line in enumerate(vep_reader):
+                    if file_n == 0 and line_n == 0:  # Only write header of first file
+                        vep_writer.write(line)
+                    elif line_n != 0:
+                        vep_writer.write(line)
 
         current_vep.unlink()
 
