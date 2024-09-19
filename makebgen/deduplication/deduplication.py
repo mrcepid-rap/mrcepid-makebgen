@@ -94,14 +94,14 @@ def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: Optiona
     removed_variants = []
 
     # 1. Variants that are duplicates INTERNAL to this file
-    var_counts = current_vep_df['ID'].value_counts()
+    var_counts = current_vep_df['varID'].value_counts()
     duplicates = var_counts[var_counts == 2]
 
     # This iterates over all duplicates in this file...
     # [0] = the variant ID
     # [1] = the number of times the variant ID appears
     for dup in duplicates.items():
-        dup_index = current_vep_df[current_vep_df['ID'] == dup[0]].index.to_list()
+        dup_index = current_vep_df[current_vep_df['varID'] == dup[0]].index.to_list()
         dup_rows = current_vep_df.iloc[dup_index]
 
         # Then we iterate through each duplicate and select the 'best' variant based on the following hierarchy:
@@ -155,7 +155,7 @@ def remove_vep_duplicates(current_vep_df: pd.DataFrame, previous_vep_df: Optiona
     #    previous file by identical criteria. I just have to go with 'remove the second instance' for this type of
     #    duplicate.
     if previous_vep_df is not None:
-        duplicates = current_vep_df[current_vep_df['ID'].isin(previous_vep_df['ID'].to_list())]
+        duplicates = current_vep_df[current_vep_df['varID'].isin(previous_vep_df['varID'].to_list())]
         current_vep_df = current_vep_df[current_vep_df.index.isin(duplicates.index.to_list()) == False]
 
     # Merge the duplicate variants from both mode 1. & 2.:
