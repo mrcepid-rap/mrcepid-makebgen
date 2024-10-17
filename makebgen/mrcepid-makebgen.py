@@ -95,14 +95,14 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     """
 
     # Set output names here:
-    final_bgen = Path(f'{output_prefix}.filtered.bgen')
-    final_bgen_idx = Path(f'{output_prefix}.filtered.bgen.bgi')
+    final_bgen = Path(f'{output_prefix}.bgen')
+    final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
 
     # Sort the bgen files according to coordinate
     sorted_bgen_prefixes = sorted(bgen_prefixes)
 
     # Create a sample file for the final bgen
-    final_sample = Path(f'{output_prefix}.filtered.sample')
+    final_sample = Path(f'{output_prefix}.sample')
     shutil.copy(Path(f'{sorted_bgen_prefixes[0]}.sample'),
                 final_sample)
 
@@ -116,7 +116,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     cmd_exec.run_cmd_on_docker(cmd)
 
     # Collect & concat VEP annotations at this time
-    concat_vep = Path(f'{output_prefix}.filtered.vep.tsv')
+    concat_vep = Path(f'{output_prefix}.vep.tsv')
     with concat_vep.open('w') as vep_writer:
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
@@ -135,14 +135,14 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
 
     # If make_bcf == True, then we actually do the bcf concatenation
     if make_bcf:
-        final_bcf = Path(f'{output_prefix}.filtered.bcf')
-        final_bcf_idx = Path(f'{output_prefix}.filtered.bcf.csi')
+        final_bcf = Path(f'{output_prefix}.bcf')
+        final_bcf_idx = Path(f'{output_prefix}.bcf.csi')
         bcf_cmd = ' '.join([f'-g /test/{file}.bcf' for file in sorted_bgen_prefixes])
-        bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{output_prefix}.filtered.bcf {bcf_cmd}'
+        bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{output_prefix}.bcf {bcf_cmd}'
         cmd_exec.run_cmd_on_docker(bcf_cmd)
 
         # And index:
-        bcf_idx = f'bcftools index /test/{output_prefix}.filtered.bcf'
+        bcf_idx = f'bcftools index /test/{output_prefix}.bcf'
         cmd_exec.run_cmd_on_docker(bcf_idx)
 
     else:
