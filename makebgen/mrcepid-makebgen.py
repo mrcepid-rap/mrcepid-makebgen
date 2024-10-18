@@ -59,7 +59,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     # And convert processed bcf into bgenv1.2
     cmd = f'plink2 --threads 2 --memory 10000 ' \
           f'--bcf /test/{vcf_path} ' \
-          f'--export bgen-1.2 \'bits=\'8 ' \
+          f'--export bgen-1.2 \'bits=\'8 \'ref-first\'' \
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
           f'--new-id-max-allele-len 1500'
