@@ -109,7 +109,7 @@
       }
     },
     "interpreter": "python3",
-    "file": "makebgen/mrcepid-makebgen.py",
+    "file": "makebgen/makebgen.py",
     "distribution": "Ubuntu",
     "release": "20.04",
     "version": "0",
