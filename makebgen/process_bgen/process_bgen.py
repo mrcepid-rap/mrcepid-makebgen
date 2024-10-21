@@ -42,7 +42,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
           f'--export bgen-1.2 \'bits=\'8 \'ref-first\' ' \
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
-          f'--output-chr chrMT ' \  
+          f'--output-chr chrMT ' \
           f'--new-id-max-allele-len 1500'
     cmd_exec.run_cmd_on_docker(cmd)
 
