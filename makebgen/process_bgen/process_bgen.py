@@ -42,6 +42,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
           f'--export bgen-1.2 \'bits=\'8 \'ref-first\' ' \
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
+          f'--output-chr chrMT ' \  
           f'--new-id-max-allele-len 1500'
     cmd_exec.run_cmd_on_docker(cmd)
 
@@ -82,7 +83,21 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     sorted_bgen_prefixes = sorted(bgen_prefixes)
 
     # Create a sample file for the final bgen
+    # plink writes an incorrectly formatted sample file, so we need to create a new one
     final_sample = Path(f'{output_prefix}.sample')
+    template_sample = Path(f'{sorted_bgen_prefixes[0]}.sample')
+    with final_sample.open('w') as final_writer,\
+        template_sample.open('r') as template_reader:
+
+        for line in template_reader:
+            split_sample = line.rstrip().split(' ')
+            if split_sample[0] == 'ID_1':
+                final_writer.write('ID_1 ID_2 missing sex\n')
+            elif split_sample[1] == '0':
+                final_writer.write('0 0 0 D\n')
+            else:
+                final_writer.write(f'{split_sample[1]} {split_sample[1]} 0 NA\n')
+
     shutil.copy(Path(f'{sorted_bgen_prefixes[0]}.sample'),
                 final_sample)
 
