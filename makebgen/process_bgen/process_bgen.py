@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path
 from typing import Dict
 
@@ -54,6 +53,52 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     return {'vcfprefix': vcf_prefix,
             'start': start}
 
+def correct_sample_file(template_sample: Path, output_prefix: str) -> Path:
+    """Correct the incorrect sample from plink2
+
+    Plink to cannot write a correct sample file, so we need to correct it here.
+
+    plink2 outputs a file like the following:
+
+        ID_1 ID_2 missing sex
+        0 0 0 D
+        0 1000001 0 NA
+        0 1000002 0.0008 NA
+        0 1000003 0.0008 NA
+
+    We need it to look like this:
+
+        ID_1 ID_2 missing sex
+        0 0 0 D
+        1000001 1000001 0 NA
+        1000002 1000002 0 NA
+        1000003 1000003 0 NA
+
+    The primary change is the addition of the sample ID to ID_1. We also overwrite the missingness column to 0 since
+    the information is not calculated correctly by plink2 for all bgen files being merged.
+
+    :param template_sample: The sample file to correct
+    :param output_prefix: The prefix for the output file
+    :return: The Path object pointing to the corrected sample file
+    """
+
+    # Create a sample file for the final bgen
+    # plink writes an incorrectly formatted sample file, so we need to create a new one
+    final_sample = Path(f'{output_prefix}.sample')
+    with final_sample.open('w') as final_writer, \
+            template_sample.open('r') as template_reader:
+
+        for line in template_reader:
+            split_sample = line.rstrip().split(' ')
+            if split_sample[0] == 'ID_1':
+                final_writer.write('ID_1 ID_2 missing sex\n')
+            elif split_sample[1] == '0':
+                final_writer.write('0 0 0 D\n')
+            else:
+                final_writer.write(f'{split_sample[1]} {split_sample[1]} 0 NA\n')
+
+    return final_sample
+
 
 def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
                     cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
@@ -82,24 +127,8 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     # Sort the bgen files according to coordinate
     sorted_bgen_prefixes = sorted(bgen_prefixes)
 
-    # Create a sample file for the final bgen
-    # plink writes an incorrectly formatted sample file, so we need to create a new one
-    final_sample = Path(f'{output_prefix}.sample')
-    template_sample = Path(f'{sorted_bgen_prefixes[0]}.sample')
-    with final_sample.open('w') as final_writer,\
-        template_sample.open('r') as template_reader:
-
-        for line in template_reader:
-            split_sample = line.rstrip().split(' ')
-            if split_sample[0] == 'ID_1':
-                final_writer.write('ID_1 ID_2 missing sex\n')
-            elif split_sample[1] == '0':
-                final_writer.write('0 0 0 D\n')
-            else:
-                final_writer.write(f'{split_sample[1]} {split_sample[1]} 0 NA\n')
-
-    shutil.copy(Path(f'{sorted_bgen_prefixes[0]}.sample'),
-                final_sample)
+    # Create a correct sample file:
+    final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)
 
     # Create a command line for concatenating bgen files and execute
     cmd = ' '.join([f'-g /test/{file}.bgen' for file in sorted_bgen_prefixes])
