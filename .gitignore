@@ -1,0 +1,21 @@
+# macOS system files
+.DS_Store
+
+# PyCharm project files
+.idea/
+
+# Python cache files
+makebgen/__pycache__/
+makebgen/deduplication/__pycache__/
+makebgen/process_bgen/__pycache__/
+test/__pycache__/
+
+# Poetry lock file
+poetry.lock
+
+# Test logs
+test/dx_run.log
+test/.DS_Store
+
+# Test files
+test/test_data/formatted_coords.txt

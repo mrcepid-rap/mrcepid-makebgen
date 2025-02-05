@@ -1,0 +1,29 @@
+PLINK v2.00a6LM 64-bit Intel (16 May 2024)
+Options in effect:
+  --bcf /test/test_data/test_input1.vcf.filtered.bcf
+  --export bgen-1.2 bits=8 ref-first
+  --memory 10000
+  --new-id-max-allele-len 1500
+  --out /test/test_input1
+  --output-chr chrMT
+  --threads 2
+  --vcf-half-call r
+
+Hostname: dd793a5a3bca
+Working directory: /
+Start time: Wed Feb  5 14:27:28 2025
+
+Random number seed: 1738765648
+7836 MiB RAM detected, ~6158 available; reserving 6094 MiB for main workspace.
+Using up to 2 compute threads.
+--bcf: 907 variants scanned.
+--bcf: /test/test_input1-temporary.pgen + /test/test_input1-temporary.pvar.zst
++ /test/test_input1-temporary.psam written.
+3202 samples (0 females, 0 males, 3202 ambiguous; 3202 founders) loaded from
+/test/test_input1-temporary.psam.
+907 variants loaded from /test/test_input1-temporary.pvar.zst.
+Note: No phenotype data present.
+Writing /test/test_input1.bgen ... done.
+Writing /test/test_input1.sample ... done.
+
+End time: Wed Feb  5 14:27:28 2025

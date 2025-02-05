@@ -11,7 +11,7 @@ from makebgen.deduplication.deduplication import deduplicate_variants
 CMD_EXEC = build_default_command_executor()
 
 def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
-                       cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
+                       cmd_exec: CommandExecutor = CMD_EXEC, dna_nexus_run: bool = True) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
     Returns a dict of the chunk name and start coordinate. This is so the name can be provided for merging, sorted by
@@ -26,14 +26,24 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
-    vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
+    if dna_nexus_run:
 
-    # Set names and DXPY files for bcf/vep file
-    # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
-    vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
+        vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
 
-    # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
-    deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
+        # Set names and DXPY files for bcf/vep file
+        # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
+        vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
+
+        # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
+        deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
+
+    else:
+
+        # if not using DNA Nexus we can assign a local path to the vcf_path variable
+        vcf_path = Path(vcf_id)
+
+        # also, we can change the filepath so that we keep the prefix only
+        vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0]).stem
 
     # And convert processed bcf into bgenv1.2
     cmd = f'plink2 --threads 2 --memory 10000 ' \
@@ -46,8 +56,12 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     cmd_exec.run_cmd_on_docker(cmd)
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
-    if not make_bcf:
-        vcf_path.unlink()
+    # Note, for now let's only do this if we are running on DNA Nexus
+
+    if dna_nexus_run:
+
+        if not make_bcf:
+            vcf_path.unlink()
 
     # Return both the processed prefix and the start coordinate to enable easy merging/sorting
     return {'vcfprefix': vcf_prefix,
@@ -101,7 +115,7 @@ def correct_sample_file(template_sample: Path, output_prefix: str) -> Path:
 
 
 def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
-                    cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
+                    dna_nexus_run: bool = True, cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
     """Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations into a single .tsv file.
 
     VEP annotation concatenation ASSUMES that file prefixes are sorted by coordinate. This is a safe assumption as the
@@ -116,6 +130,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     :param output_prefix: The prefix for the final bgen file. Will be named <output_prefix>.bgen.
     :param make_bcf: Should a bcf be made in addition to bgen? This can lead to VERY long runtimes if the number of
         sites is large.
+    :param dna_nexus_run: a flag to indicate whether we are running on DNA Nexus or not. Default is True.
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A named dict containing the final bgen, vep, (and if requested) bcf file paths with associated indices.
     """
@@ -155,7 +170,8 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
         current_vep.unlink()
 
     # bgzip and tabix index the resulting annotations
-    final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2)
+    final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2, dna_nexus_run=dna_nexus_run,
+                                               cmd_exec=cmd_exec)
 
     # If make_bcf == True, then we actually do the bcf concatenation
     if make_bcf:
