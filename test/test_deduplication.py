@@ -10,8 +10,7 @@ import pytest
 from general_utilities.association_resources import check_gzipped, replace_multi_suffix
 from general_utilities.job_management.command_executor import DockerMount, CommandExecutor
 
-from makebgen.deduplication.deduplication import deduplicate_variants
-from makebgen.deduplication.deduplication import remove_bcf_duplicates
+from makebgen.deduplication.deduplication import deduplicate_variants, remove_bcf_duplicates, build_query_string
 
 test_data_dir = Path(__file__).parent / 'test_data'
 
@@ -23,6 +22,20 @@ test_data_dir = Path(__file__).parent / 'test_data'
     ]
 )
 def test_deduplicate_variants(coordinate_path):
+    """
+    Test the deduplicate_variants function to ensure it correctly processes and
+    deduplicates variants.
+
+    This test performs the following steps:
+    1. Verifies the existence of the coordinate file.
+    2. Reads and modifies the coordinate file to update file paths for local testing.
+    3. Saves the modified coordinate file.
+    4. Reads the modified coordinate file and simulates the deduplication process.
+    5. Compares the output files with expected results to ensure correctness.
+
+    :param coordinate_path: Path to the coordinate file used for deduplication.
+    """
+
     # let's deal with the coords file, which needs to
     # be re-formatted to work locally
     # make sure the path to the original coord file exists
@@ -70,11 +83,6 @@ def test_deduplicate_variants(coordinate_path):
                            shallow=False)
 
 
-import pandas as pd
-import pytest
-from makebgen.deduplication.deduplication import build_query_string
-
-
 @pytest.mark.parametrize(
     "removed_df, expected_query",
     [
@@ -108,6 +116,18 @@ from makebgen.deduplication.deduplication import build_query_string
     ]
 )
 def test_build_query_string(removed_df, expected_query):
+    """
+    Test the build_query_string function to ensure it correctly constructs a query string
+    (which marks duplicated variants) from the provided DataFrame.
+
+    This test performs the following steps:
+    1. Calls the build_query_string function with the provided DataFrame.
+    2. Compares the generated query string with the expected query string to ensure correctness.
+
+    :param removed_df: DataFrame containing the variants to be included in the query string.
+    :param expected_query: The expected query string.
+    """
+
     query = build_query_string(removed_df)
     assert query == expected_query
 
