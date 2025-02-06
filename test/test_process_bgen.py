@@ -167,7 +167,6 @@ def test_make_final_bgen(bgen_prefixes, output_prefix, make_bcf):
                        test_data_dir / 'expected_output/test_bgen.sample',
                        shallow=False)
 
-
     delete_test_files(test_data_dir.parent)
 
 

@@ -12,7 +12,7 @@ CMD_EXEC = build_default_command_executor()
 
 
 def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
-                         cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
+                         cmd_exec: CommandExecutor = CMD_EXEC, dna_nexus_run: bool = True) -> Path:
     """Entry point into the various deduplication methods in this module. This method only handles the logic flow of
     running the other methods.
 
@@ -24,8 +24,8 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
     """
 
     # Load relevant VEP annotations
-    current_df = load_vep(vep_id)
-    previous_df = load_vep(previous_vep_id)
+    current_df = load_vep(vep_id, dna_nexus_run)
+    previous_df = load_vep(previous_vep_id, dna_nexus_run)
     deduped_df, removed_df = remove_vep_duplicates(current_df, previous_df)
 
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
@@ -36,7 +36,7 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
     return write_vep_table(deduped_df, vcf_prefix)
 
 
-def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
+def load_vep(vep_id: str, dna_nexus_run) -> Optional[pd.DataFrame]:
     """Read a VEP annotation into a pandas DataFrame.
 
     This method is a simple wrapper for :func:`pd.read_csv` which will *stream* a vep annotation for the given
@@ -50,6 +50,8 @@ def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
     being parameterized.
 
     :param vep_id: The dxid of the VEP annotation file.
+    :param dna_nexus_run: This is to specify whether we are running a DNA Nexus run (and need to use DNA Nexus specific
+    tooling) or not. The default is set to True.
     :return: An optional pandas DataFrame of the VEP annotation. If vep_id is None, return None.
     """
 
@@ -61,7 +63,10 @@ def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
         #
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", index_col=False)
+        if not dna_nexus_run:
+            current_df = pd.read_csv(gzip.open(vep_id), sep="\t", index_col=False)
+        else:
+            current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
         current_df.rename(columns={'ID':'varID'}, inplace=True)
@@ -172,8 +177,15 @@ def write_vep_table(deduplicated_vep: pd.DataFrame, vcf_prefix: Path) -> Path:
     :return: Path to the written VEP annotation file.
     """
 
-    vcf_path = vcf_prefix.with_suffix('.'.join(vcf_prefix.suffixes + ['vep','tsv']))
+    # ensure that vcf_prefix is a path-like object
+    vcf_prefix = Path(vcf_prefix)
+    # Add the suffix to the stem
+    vcf_path = vcf_prefix.with_name(vcf_prefix.stem + '.vep.tsv')
+    # export the data using the new filepath
     deduplicated_vep.to_csv(path_or_buf=vcf_path, na_rep='NA', index=False, sep="\t")
+
+    # vcf_path = vcf_prefix.with_suffix('.'.join(vcf_prefix.suffixes + ['vep','tsv']))
+    # deduplicated_vep.to_csv(path_or_buf=vcf_path, na_rep='NA', index=False, sep="\t")
 
     return vcf_path
 
