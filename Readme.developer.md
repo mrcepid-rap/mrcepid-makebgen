@@ -1,12 +1,11 @@
 # mrcepid-filterbcf Developer Readme
 
-<!--
-TODO: Please edit this Readme.developer.md file to include information
-for developers or advanced users, for example:
+## Testing
 
-* Information about app internals and implementation details
-* How to report bugs or contribute to development
--->
+Note for development: this applet has now been set to work with local unit tests, to ensure
+robust CI/CD. Due to size, this test data cannot be pushed to GitHub. Please ge in touch with
+Eugene Gardner, who will send you a secure download link for the test data. Do get in touch with Eugene
+Gardner for any further information.
 
 ## Running this app with additional computational resources
 
@@ -25,7 +24,6 @@ providing the ``systemRequirements`` field to ```/applet-XXXX/run``` or
       [...]
     }
 
-See <a
-href="https://documentation.dnanexus.com/developer/api/running-analyses/io-and-run-specifications#run-specification">Run
-Specification</a> in the API documentation for more information about the
+See https://documentation.dnanexus.com/developer/api/running-analyses/io-and-run-specifications#run-specification%22%3ERunSpecification%3C/a%3E
+in the API documentation for more information about the
 available instance types.

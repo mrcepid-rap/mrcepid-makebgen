@@ -1,6 +1,5 @@
 import csv
 import filecmp
-import glob
 import os
 import shutil
 import subprocess
@@ -11,6 +10,7 @@ from general_utilities.association_resources import check_gzipped, replace_multi
 from general_utilities.job_management.command_executor import DockerMount, CommandExecutor
 
 from makebgen.deduplication.deduplication import deduplicate_variants, remove_bcf_duplicates, build_query_string
+from test_process_bgen import delete_test_files
 
 test_data_dir = Path(__file__).parent / 'test_data'
 
@@ -208,21 +208,3 @@ def test_remove_bcf_duplicates(query_string, vcf_file, vcf_prefix, query_df):
 
     # delete the test files if we don't need them
     delete_test_files(test_data_dir.parent)
-
-
-def delete_test_files(directory):
-    """
-    Delete all the files after we are done testing them
-    """
-    # Use glob to find files starting with "test_input" or "test_bgen"
-    files_to_delete = glob.glob(os.path.join(directory, 'test_input*')) + \
-                      glob.glob(os.path.join(directory, 'test_bgen*'))
-
-    # Iterate and delete each file
-    for file_path in files_to_delete:
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            print(f"Error deleting {file_path}: {e}")
-
-    print("Test output files have been deleted")
