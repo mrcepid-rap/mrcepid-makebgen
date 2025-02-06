@@ -5,11 +5,13 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from general_utilities.association_resources import check_gzipped, replace_multi_suffix
 from general_utilities.job_management.command_executor import DockerMount, CommandExecutor
 
-from makebgen.deduplication.deduplication import deduplicate_variants, remove_bcf_duplicates, build_query_string
+from makebgen.deduplication.deduplication import (deduplicate_variants, remove_vep_duplicates,
+                                                  remove_bcf_duplicates, build_query_string)
 from test_process_bgen import delete_test_files
 
 test_data_dir = Path(__file__).parent / 'test_data'
@@ -81,6 +83,50 @@ def test_deduplicate_variants(coordinate_path):
         assert filecmp.cmp('test_input2.vep.tsv',
                            test_data_dir / 'expected_output/test_input2.vep.tsv',
                            shallow=False)
+
+
+@pytest.mark.parametrize(
+    "current_vep_df, previous_vep_df, expected_deduped_df, expected_removed_df",
+    [
+        (
+                pd.DataFrame({
+                    'varID': ['var1', 'var1', 'var2', 'var3', 'var4', 'var4'],
+                    'FILTER': ['PASS', 'FAIL', 'PASS', 'PASS', 'FAIL', 'PASS'],
+                    'F_MISSING': [0.1, 0.2, 0.1, 0.1, 0.3, 0.1],
+                    'AF': [0.2, 0.1, 0.3, 0.4, 0.1, 0.2]
+                }),
+                pd.DataFrame({
+                    'varID': ['var3', 'var5'],
+                    'FILTER': ['PASS', 'PASS'],
+                    'F_MISSING': [0.1, 0.1],
+                    'AF': [0.4, 0.5]
+                }),
+                pd.DataFrame({
+                    'varID': ['var1', 'var2', 'var4'],
+                    'FILTER': ['PASS', 'PASS', 'PASS'],
+                    'F_MISSING': [0.1, 0.1, 0.1],
+                    'AF': [0.2, 0.3, 0.2]
+                }).reset_index(drop=True),
+                pd.DataFrame({
+                    'varID': ['var1', 'var4', 'var3'],
+                    'FILTER': ['FAIL', 'FAIL', 'PASS'],
+                    'F_MISSING': [0.2, 0.3, 0.1],
+                    'AF': [0.1, 0.1, 0.4]
+                }).reset_index(drop=True)
+        )
+    ]
+)
+def test_remove_vep_duplicates(current_vep_df, previous_vep_df, expected_deduped_df, expected_removed_df):
+    # Call the function
+    deduped_df, removed_df = remove_vep_duplicates(current_vep_df, previous_vep_df)
+
+    # Reset index for comparison
+    deduped_df = deduped_df.reset_index(drop=True)
+    removed_df = removed_df.reset_index(drop=True)
+
+    # Assert the results
+    pd.testing.assert_frame_equal(deduped_df, expected_deduped_df)
+    pd.testing.assert_frame_equal(removed_df, expected_removed_df)
 
 
 @pytest.mark.parametrize(

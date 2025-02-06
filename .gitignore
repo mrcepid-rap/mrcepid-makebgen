@@ -16,6 +16,7 @@ poetry.lock
 # Test logs
 test/dx_run.log
 test/.DS_Store
+dx_run.log
 
 # Test files
 test/test_data/formatted_coords.txt
