@@ -1,3 +1,6 @@
+"""
+If you want to keep the output of these tests, change the flag KEEP_TEMP to True.
+"""
 import csv
 import filecmp
 import os
@@ -12,9 +15,45 @@ from general_utilities.job_management.command_executor import DockerMount, Comma
 
 from makebgen.deduplication.deduplication import (deduplicate_variants, remove_vep_duplicates,
                                                   remove_bcf_duplicates, build_query_string)
-from test_process_bgen import delete_test_files
 
 test_data_dir = Path(__file__).parent / 'test_data'
+
+# Set this flag to True if you want to keep (copy) the temporary output files
+KEEP_TEMP = False
+
+
+@pytest.fixture
+def temporary_path(tmp_path, monkeypatch):
+    """
+    Prepare a temporary working directory that contains a copy of the test_data
+    directory, then change the working directory to it.
+
+    If KEEP_TEMP is True, after the test the entire temporary directory will be copied
+    to a folder 'temp_test_outputs' in the project root.
+    """
+    # Determine where the original test_data directory is located.
+    # (Assumes it is at <project_root>/test_data)
+    test_data_source = Path(__file__).parent / "test_data"
+
+    # Create the destination folder inside the tmp_path.
+    destination = tmp_path / "test_data"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    # Copy the entire test_data directory into the temporary directory.
+    shutil.copytree(test_data_source, destination)
+
+    # Change the current working directory to the temporary directory.
+    monkeypatch.chdir(tmp_path)
+
+    # Yield the temporary directory to the test.
+    yield tmp_path
+
+    # After the test, if KEEP_TEMP is True, copy the temporary directory to a persistent location.
+    if KEEP_TEMP:
+        persistent_dir = Path(__file__).parent / "temp_test_outputs" / tmp_path.name
+        persistent_dir.parent.mkdir(exist_ok=True)
+        shutil.copytree(tmp_path, persistent_dir, dirs_exist_ok=True)
+        print(f"Temporary output files have been copied to: {persistent_dir}")
 
 
 @pytest.mark.parametrize(
@@ -23,7 +62,7 @@ test_data_dir = Path(__file__).parent / 'test_data'
         Path('test_coords.txt'),
     ]
 )
-def test_deduplicate_variants(coordinate_path):
+def test_deduplicate_variants(temporary_path, coordinate_path):
     """
     Test the deduplicate_variants function to ensure it correctly processes and
     deduplicates variants.
@@ -116,7 +155,8 @@ def test_deduplicate_variants(coordinate_path):
         )
     ]
 )
-def test_remove_vep_duplicates(current_vep_df, previous_vep_df, expected_deduped_df, expected_removed_df):
+def test_remove_vep_duplicates(temporary_path, current_vep_df, previous_vep_df, expected_deduped_df,
+                               expected_removed_df):
     # Call the function
     deduped_df, removed_df = remove_vep_duplicates(current_vep_df, previous_vep_df)
 
@@ -161,7 +201,7 @@ def test_remove_vep_duplicates(current_vep_df, previous_vep_df, expected_deduped
         )
     ]
 )
-def test_build_query_string(removed_df, expected_query):
+def test_build_query_string(temporary_path, removed_df, expected_query):
     """
     Test the build_query_string function to ensure it correctly constructs a query string
     (which marks duplicated variants) from the provided DataFrame.
@@ -203,7 +243,7 @@ def test_build_query_string(removed_df, expected_query):
         ),
     ]
 )
-def test_remove_bcf_duplicates(query_string, vcf_file, vcf_prefix, query_df):
+def test_remove_bcf_duplicates(temporary_path, query_string, vcf_file, vcf_prefix, query_df):
     """
     Test the remove_bcf_duplicates function to ensure it correctly removes duplicate variants from a BCF file.
     This test is a little convoluted, but we want to make sure that we are deleting the duplicates from out files.
@@ -251,6 +291,3 @@ def test_remove_bcf_duplicates(query_string, vcf_file, vcf_prefix, query_df):
                   (test_df['ALT'] == query_df['ALT'].values[0])).any()
     # Use assert to ensure the combination is not present
     assert not is_present, "The combination is present in the DataFrame."
-
-    # delete the test files if we don't need them
-    delete_test_files(test_data_dir.parent)

@@ -1,7 +1,7 @@
 """
-Note: these tests are designed to be run sequentially (first test, then second, then third etc.)
-This is due to the fact that the functions are run sequentially, but also so that we can look at
-the output files as they get generated. To run them all, please run tests for 'Current File'.
+Note: these tests are designed to be run all at once, as the input of a downstream test relies on the output of an
+upstream test. The best way to do this is to hit "Current File" in the top right corner, if using PyCharm; or, run
+pytest in the directory via CLI. If you want to keep the output of these tests, change the flag KEEP_TEMP to True.
 """
 
 import csv
@@ -22,13 +22,60 @@ from makebgen.process_bgen.process_bgen import make_bgen_from_vcf, correct_sampl
 test_data_dir = Path(__file__).parent / 'test_data'
 
 
+@pytest.fixture(scope="module")
+def pipeline_data():
+    """
+    Provides a shared dictionary for storing intermediate file names
+    produced by each stage of the pipeline.
+    """
+    return {}
+
+
+# Set this flag to True if you want to keep (copy) the temporary output files
+KEEP_TEMP = False
+
+
+@pytest.fixture
+def temporary_path(tmp_path, monkeypatch):
+    """
+    Prepare a temporary working directory that contains a copy of the test_data
+    directory, then change the working directory to it.
+
+    If KEEP_TEMP is True, after the test the entire temporary directory will be copied
+    to a folder 'temp_test_outputs' in the project root.
+    """
+    # Determine where the original test_data directory is located.
+    # (Assumes it is at <project_root>/test_data)
+    test_data_source = Path(__file__).parent / "test_data"
+
+    # Create the destination folder inside the tmp_path.
+    destination = tmp_path / "test_data"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    # Copy the entire test_data directory into the temporary directory.
+    shutil.copytree(test_data_source, destination)
+
+    # Change the current working directory to the temporary directory.
+    monkeypatch.chdir(tmp_path)
+
+    # Yield the temporary directory to the test.
+    yield tmp_path
+
+    # After the test, if KEEP_TEMP is True, copy the temporary directory to a persistent location.
+    if KEEP_TEMP:
+        persistent_dir = Path(__file__).parent / "temp_test_outputs" / tmp_path.name
+        persistent_dir.parent.mkdir(exist_ok=True)
+        shutil.copytree(tmp_path, persistent_dir, dirs_exist_ok=True)
+        print(f"Temporary output files have been copied to: {persistent_dir}")
+
+
 @pytest.mark.parametrize(
     "coordinate_path",
     [
         Path('test_coords.txt'),
     ]
 )
-def test_make_bgen_from_vcf(coordinate_path, make_bcf=False):
+def test_make_bgen_from_vcf(temporary_path, pipeline_data, coordinate_path, make_bcf=False):
     """
     Test the `make_bgen_from_vcf` function.
 
@@ -89,24 +136,32 @@ def test_make_bgen_from_vcf(coordinate_path, make_bcf=False):
                            test_data_dir / 'expected_output/test_input2.bgen',
                            shallow=False)
 
+    pipeline_data['test_input1.sample'] = temporary_path / 'test_input1.sample'
+    pipeline_data['test_input2.sample'] = temporary_path / 'test_input2.sample'
+    pipeline_data['test_input1.bgen'] = temporary_path / 'test_input1.bgen'
+    pipeline_data['test_input2.bgen'] = temporary_path / 'test_input2.bgen'
+
 
 @pytest.mark.parametrize(
-    "sample_file",
+    "sample_key",
     [
-        Path('test_input1.sample'),
-        Path('test_input2.sample'),
+        'test_input1.sample',
+        'test_input2.sample',
     ]
 )
-def test_correct_sample_file(sample_file, tmp_path):
+def test_correct_sample_file(temporary_path, pipeline_data, sample_key, tmp_path):
     """
     Test the `correct_sample_file` function.
 
-    This test function takes a sample file and a temporary path, corrects the sample file,
-    and verifies that the corrected sample file exists and contains the expected content.
-
-    :param sample_file: Path to the sample file to be corrected.
-    :param tmp_path: Temporary path for storing the corrected sample file.
+    This test retrieves a sample file path from pipeline_data (using the provided key),
+    corrects the sample file using the correct_sample_file function, and verifies that the
+    corrected file exists and contains the expected content.
     """
+    # Retrieve the actual sample file from pipeline_data using the key.
+    sample_file = pipeline_data.get(sample_key)
+    assert sample_file is not None, f"No entry found in pipeline_data for key '{sample_key}'"
+
+    print(f"Testing sample file: {sample_file}")
 
     output_prefix = tmp_path / "test_output"
     corrected_sample = correct_sample_file(sample_file, output_prefix)
@@ -130,7 +185,7 @@ def test_correct_sample_file(sample_file, tmp_path):
          False)
     ]
 )
-def test_make_final_bgen(bgen_prefixes, output_prefix, make_bcf):
+def test_make_final_bgen(temporary_path, pipeline_data, bgen_prefixes, output_prefix, make_bcf):
     """
     Test the `make_final_bgen` function.
 
@@ -143,12 +198,28 @@ def test_make_final_bgen(bgen_prefixes, output_prefix, make_bcf):
     :param make_bcf: Boolean flag indicating whether a concatenated BCF should be made in addition to the BGEN.
     """
 
+    # first we need to retrieve the files from our pipeline_data object
+    try:
+        bgen_file1 = pipeline_data['test_input1.bgen']
+        bgen_file2 = pipeline_data['test_input2.bgen']
+        sample_file1 = pipeline_data['test_input1.sample']
+        sample_file2 = pipeline_data['test_input2.sample']
+    except KeyError:
+        pytest.skip("BGEN files not available in pipeline_data from previous stage")
+
+    # let's copy these into the current directory, otherwise the function won't work
+    current_dir = Path(os.getcwd())
+    for file in (bgen_file1, bgen_file2, sample_file1, sample_file2):
+        target = current_dir / file.name
+        if not target.exists():
+            shutil.copy(file, target)
+            print(f"Copied {file} to {target}")
+
     # we need to create a docker image locally
     test_mount = DockerMount(Path(os.getcwd()), Path('/test/'))
     cmd_exec = CommandExecutor(docker_image='egardner413/mrcepid-burdentesting', docker_mounts=[test_mount])
 
-    # for this to work we need to copy some files into the current working directory
-
+    # for this to work we also need to copy some other test files into the current working directory
     for file in glob.glob(str(test_data_dir / "*.vep.tsv.gz")):
         new_filename = os.path.basename(file).replace('.vcf', '').replace('.gz', '')
         shutil.copy(file, new_filename + '.gz')
@@ -157,32 +228,14 @@ def test_make_final_bgen(bgen_prefixes, output_prefix, make_bcf):
             with open(new_filename, 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)
 
+    # finally let's run the function
     final_bgens = make_final_bgen(bgen_prefixes, output_prefix, make_bcf,
                                   dna_nexus_run=False, cmd_exec=cmd_exec)
 
+    # make sure the output is as expected
     assert filecmp.cmp(final_bgens['bgen']['file'],
                        test_data_dir / 'expected_output/test_bgen.bgen',
                        shallow=False)
     assert filecmp.cmp(final_bgens['bgen']['sample'],
                        test_data_dir / 'expected_output/test_bgen.sample',
                        shallow=False)
-
-    delete_test_files(test_data_dir.parent)
-
-
-def delete_test_files(directory):
-    """
-    Delete all the files after we are done testing them
-    """
-    # Use glob to find files starting with "test_input" or "test_bgen"
-    files_to_delete = glob.glob(os.path.join(directory, 'test_input*')) + \
-                      glob.glob(os.path.join(directory, 'test_bgen*'))
-
-    # Iterate and delete each file
-    for file_path in files_to_delete:
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            print(f"Error deleting {file_path}: {e}")
-
-    print("Test output files have been deleted")
