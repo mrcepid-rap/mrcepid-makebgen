@@ -3,9 +3,7 @@
 ## Testing
 
 Note for development: this applet has now been set to work with local unit tests, to ensure
-robust CI/CD. Due to size, this test data cannot be pushed to GitHub. Please ge in touch with
-Eugene Gardner, who will send you a secure download link for the test data. Do get in touch with Eugene
-Gardner for any further information.
+robust CI/CD.
 
 ## Running this app with additional computational resources
 
