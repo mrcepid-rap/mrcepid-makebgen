@@ -9,7 +9,6 @@ description = ""
 authors = [ "Eugene Gardner <eugene.gardner@mrc-epid.cam.ac.uk>",]
 readme = "Readme.md"
 repository = "https://github.com/mrcepid-rap/mrcepid-makebgen"
-#licence = "MIT"
 
 [tool.poetry.dependencies]
 python = "~3.8"
@@ -18,7 +17,8 @@ importlib-resources = "5.12.0"
 setuptools = "60.2.0"
 pandas = "1.5.2"
 pytest = "^7.4.0"
-general-utilities = {git = "https://github.com/mrcepid-rap/general_utilities.git", rev = "v1.5.1"}
+general-utilities = {git = "https://github.com/mrcepid-rap/general_utilities.git", rev = "HG-589-update-general-utilities-to-support-new-burden-runs"}
+bgen = "^1.7.3"
 
 [tool.coverage.run]
 omit = [

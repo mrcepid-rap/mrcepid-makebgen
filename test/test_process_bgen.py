@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from bgen import BgenReader
 from general_utilities.association_resources import check_gzipped
 from general_utilities.job_management.command_executor import DockerMount, CommandExecutor
 
@@ -69,13 +70,39 @@ def temporary_path(tmp_path, monkeypatch):
         print(f"Temporary output files have been copied to: {persistent_dir}")
 
 
+@pytest.fixture
+def formatted_coords_file(coordinate_path: Path, test_data_directory: Path = test_data_dir) -> Path:
+    """
+    Fixture to create a formatted coordinates file for testing.
+    """
+    full_path = test_data_directory / coordinate_path
+    # Ensure the coordinate file exists
+    assert full_path.exists(), f"Path does not exist: {full_path}"
+
+    # Read the coordinate file into a DataFrame
+    df = pd.read_csv(full_path, sep='\t')
+
+    # Modify specific columns to include the 'test_data/' prefix
+    columns_to_modify = ['output_bcf', 'output_bcf_idx', 'output_vep', 'output_vep_idx']
+    df[columns_to_modify] = df[columns_to_modify].apply(lambda col: col.apply(lambda x: f'test_data/{x}'))
+
+    # Save the modified DataFrame to a new file
+    formatted_coords = test_data_dir / 'formatted_coords.txt'
+    df.to_csv(formatted_coords, sep='\t')
+
+    # Ensure the new formatted coordinates file was created
+    assert formatted_coords.exists(), "Formatted coordinates file was not created"
+
+    return formatted_coords
+
+
 @pytest.mark.parametrize(
     "coordinate_path",
     [
         Path('test_coords.txt'),
     ]
 )
-def test_make_bgen_from_vcf(temporary_path, pipeline_data, coordinate_path, make_bcf=False):
+def test_make_bgen_from_vcf(temporary_path, pipeline_data, formatted_coords_file, make_bcf=False):
     """
     Test the `make_bgen_from_vcf` function.
 
@@ -89,24 +116,8 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, coordinate_path, make
 
     total_bcf = 0
 
-    # let's deal with the coords file, which needs to
-    # be re-formatted to work locally
-    # make sure the path to the original coord file exists
-    full_path = test_data_dir / coordinate_path
-    assert full_path.exists(), f"Path does not exist: {full_path}"
-
-    # read it in so we can change the filepaths
-    df = pd.read_csv(full_path, sep='\t')
-    columns_to_modify = ['output_bcf', 'output_bcf_idx',
-                         'output_vep', 'output_vep_idx']
-    # for each column, add the paths of our local files
-    for column in columns_to_modify:
-        df[column] = str('test_data/') + df[column].astype(str)
-    # save this file as 'formatted_coords.txt'
-    df.to_csv(test_data_dir / 'formatted_coords.txt', sep='\t')
-    # make sure this file exists
-    new_coords = test_data_dir / 'formatted_coords.txt'
-    assert new_coords
+    # Use the formatted coordinates file from the fixture
+    new_coords = formatted_coords_file
 
     # we need to create a docker image locally
     test_mount = DockerMount(Path(os.getcwd()), Path('/test/'))
@@ -120,13 +131,13 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, coordinate_path, make
         for row in coord_file_reader:
             total_bcf += 1
             make_bgen_from_vcf(
-                vcf_id=row['output_bcf'],
+                vcf_id=Path(row['output_bcf']),
                 vep_id=row['output_vep'],
                 previous_vep_id=previous_vep_id,
                 start=row['start'],
                 make_bcf=make_bcf,
                 cmd_exec=cmd_exec,
-                dna_nexus_run=False)
+            )
             previous_vep_id = row['output_vep']
 
         assert filecmp.cmp('test_input1.bgen',
@@ -149,7 +160,7 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, coordinate_path, make
         'test_input2.sample',
     ]
 )
-def test_correct_sample_file(temporary_path, pipeline_data, sample_key, tmp_path):
+def test_correct_sample_file(temporary_path: Path, pipeline_data: dict, sample_key: str, tmp_path: Path):
     """
     Test the `correct_sample_file` function.
 
@@ -230,7 +241,14 @@ def test_make_final_bgen(temporary_path, pipeline_data, bgen_prefixes, output_pr
 
     # finally let's run the function
     final_bgens = make_final_bgen(bgen_prefixes, output_prefix, make_bcf,
-                                  dna_nexus_run=False, cmd_exec=cmd_exec)
+                                  cmd_exec=cmd_exec)
+
+    # check for number of samples
+    with BgenReader(final_bgens['bgen']['file'], delay_parsing=True) as bfile:
+        assert len(bfile.samples) == 3202
+    # check for number of variants
+    with BgenReader(final_bgens['bgen']['file'], delay_parsing=True) as bfile:
+        assert len(bfile.positions()) == 1465
 
     # make sure the output is as expected
     assert filecmp.cmp(final_bgens['bgen']['file'],

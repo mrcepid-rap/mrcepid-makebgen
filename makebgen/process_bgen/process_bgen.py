@@ -1,17 +1,21 @@
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 
+import dxpy
 from general_utilities.association_resources import download_dxfile_by_name, replace_multi_suffix, bgzip_and_tabix
+from general_utilities.import_utils.import_lib import input_filetype_parser
 from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
+
 from makebgen.deduplication.deduplication import deduplicate_variants
 
 # Small note to explain logic – When CMD EXEC is passed to functions, it is to enable functional testing rather than
 # end-to-end testing outside the DNANexus environment. During 'normal' execution the global CMD_EXEC is used.
 CMD_EXEC = build_default_command_executor()
 
-def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
-                       cmd_exec: CommandExecutor = CMD_EXEC, dna_nexus_run: bool = True) -> Dict[str, int]:
+
+def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
+                       cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
     Returns a dict of the chunk name and start coordinate. This is so the name can be provided for merging, sorted by
@@ -26,7 +30,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
-    if dna_nexus_run:
+    if isinstance(input_filetype_parser(vcf_id), dxpy.DXFile):
 
         vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
 
@@ -58,7 +62,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
     # Note, for now let's only do this if we are running on DNA Nexus
 
-    if dna_nexus_run:
+    if isinstance(input_filetype_parser(vcf_id), dxpy.DXFile):
 
         if not make_bcf:
             vcf_path.unlink()
@@ -66,6 +70,7 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     # Return both the processed prefix and the start coordinate to enable easy merging/sorting
     return {'vcfprefix': vcf_prefix,
             'start': start}
+
 
 def correct_sample_file(template_sample: Path, output_prefix: str) -> Path:
     """Correct the incorrect sample from plink2
@@ -115,7 +120,7 @@ def correct_sample_file(template_sample: Path, output_prefix: str) -> Path:
 
 
 def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
-                    dna_nexus_run: bool = True, cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
+                    cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
     """Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations into a single .tsv file.
 
     VEP annotation concatenation ASSUMES that file prefixes are sorted by coordinate. This is a safe assumption as the
@@ -130,7 +135,6 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     :param output_prefix: The prefix for the final bgen file. Will be named <output_prefix>.bgen.
     :param make_bcf: Should a bcf be made in addition to bgen? This can lead to VERY long runtimes if the number of
         sites is large.
-    :param dna_nexus_run: a flag to indicate whether we are running on DNA Nexus or not. Default is True.
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A named dict containing the final bgen, vep, (and if requested) bcf file paths with associated indices.
     """
@@ -170,8 +174,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
         current_vep.unlink()
 
     # bgzip and tabix index the resulting annotations
-    final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2, dna_nexus_run=dna_nexus_run,
-                                               cmd_exec=cmd_exec)
+    final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2)
 
     # If make_bcf == True, then we actually do the bcf concatenation
     if make_bcf:

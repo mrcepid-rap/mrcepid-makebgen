@@ -1,9 +1,10 @@
 import gzip
+from pathlib import Path
+from typing import Tuple, Optional, Union
+
 import dxpy
 import pandas as pd
-
-from pathlib import Path
-from typing import Tuple, Optional
+from general_utilities.import_utils.import_lib import input_filetype_parser
 from general_utilities.job_management.command_executor import build_default_command_executor, CommandExecutor
 from general_utilities.mrc_logger import MRCLogger
 
@@ -11,8 +12,8 @@ LOGGER = MRCLogger().get_logger()
 CMD_EXEC = build_default_command_executor()
 
 
-def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
-                         cmd_exec: CommandExecutor = CMD_EXEC, dna_nexus_run: bool = True) -> Path:
+def deduplicate_variants(vep_id: Union[str, Path], previous_vep_id: Union[str, Path], vcf_prefix: Union[str, Path],
+                         cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
     """Entry point into the various deduplication methods in this module. This method only handles the logic flow of
     running the other methods.
 
@@ -24,8 +25,8 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
     """
 
     # Load relevant VEP annotations
-    current_df = load_vep(vep_id, dna_nexus_run)
-    previous_df = load_vep(previous_vep_id, dna_nexus_run)
+    current_df = load_vep(vep_id)
+    previous_df = load_vep(previous_vep_id)
     deduped_df, removed_df = remove_vep_duplicates(current_df, previous_df)
 
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
@@ -36,7 +37,7 @@ def deduplicate_variants(vep_id: str, previous_vep_id: str, vcf_prefix: Path,
     return write_vep_table(deduped_df, vcf_prefix)
 
 
-def load_vep(vep_id: str, dna_nexus_run) -> Optional[pd.DataFrame]:
+def load_vep(vep_id: Union[Path, str]) -> Optional[pd.DataFrame]:
     """Read a VEP annotation into a pandas DataFrame.
 
     This method is a simple wrapper for :func:`pd.read_csv` which will *stream* a vep annotation for the given
@@ -50,7 +51,6 @@ def load_vep(vep_id: str, dna_nexus_run) -> Optional[pd.DataFrame]:
     being parameterized.
 
     :param vep_id: The dxid of the VEP annotation file.
-    :param dna_nexus_run: This is to specify whether we are running a DNA Nexus run (and need to use DNA Nexus specific
     tooling) or not. The default is set to True.
     :return: An optional pandas DataFrame of the VEP annotation. If vep_id is None, return None.
     """
@@ -63,13 +63,14 @@ def load_vep(vep_id: str, dna_nexus_run) -> Optional[pd.DataFrame]:
         #
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        if not dna_nexus_run:
-            current_df = pd.read_csv(gzip.open(vep_id), sep="\t", index_col=False)
+        if isinstance(input_filetype_parser(vep_id), dxpy.DXFile):
+            current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t",
+                                     index_col=False)
         else:
-            current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t", index_col=False)
+            current_df = pd.read_csv(gzip.open(Path(vep_id)), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
-        current_df.rename(columns={'ID':'varID'}, inplace=True)
+        current_df.rename(columns={'ID': 'varID'}, inplace=True)
 
         return current_df
 
@@ -233,6 +234,9 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path,
     :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate.
     :return: Path to the deduplicated BCF file.
     """
+
+    if "|" in query_string:
+        raise ValueError("OR operator '|' not supported")
 
     cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_prefix}.bcf'
     cmd_exec.run_cmd_on_docker(cmd)

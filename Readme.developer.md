@@ -2,8 +2,8 @@
 
 ## Testing
 
-Note for development: this applet has now been set to work with local unit tests, to ensure
-robust CI/CD.
+The test data in this repository uses the output from mrcepid-filterbcf. 
+Please refer to the readme in mrcepid-filterbcf in order to generate the input data.
 
 ## Running this app with additional computational resources
 
