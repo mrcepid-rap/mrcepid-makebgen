@@ -5,6 +5,8 @@
 The test data in this repository uses the output from mrcepid-filterbcf. 
 Please refer to the readme in mrcepid-filterbcf in order to generate the input data.
 
+The only requirement is that the data should be in the `test/test_data` directory.
+
 ## Running this app with additional computational resources
 
 This app has the following entry points:
