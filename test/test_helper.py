@@ -7,7 +7,7 @@ import pytest
 from makebgen.process_bgen.helper import split_coordinates_file
 
 test_data_dir = Path(__file__).parent / 'test_data'
-
+input_file = test_data_dir / 'test_coords_v2.txt'
 with open(test_data_dir / 'final_dict.json', 'r') as f:
     gene_dict = json.load(f)
 
@@ -78,7 +78,7 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
                 'output_vep': ['sample1.vep.tsv.gz', 'sample1.vep.tsv.gz', 'sample2.vep.tsv.gz'],
                 'output_vep_idx': ['sample1.vep.tsv.gz.tbi', 'sample1.vep.tsv.gz.tbi', 'sample2.vep.tsv.gz.tbi'],
             }),
-            250,
+            300,
             [
                 {'chrom': 'chr1_chunk1', 'start': 100, 'end': 350, 'vcf_prefix': 'sample1'},
                 {'chrom': 'chr1_chunk2', 'start': 351, 'end': 600, 'vcf_prefix': 'sample1'},
@@ -87,7 +87,7 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             ]
     ),
 ])
-def test_split_coordinates_file(input_data, chunk_size, expected):
+def test_split_coordinates_pytest(input_data, chunk_size, expected):
     result = split_coordinates_file(coordinates_file=input_data, gene_dict=gene_dict, chunk_size=chunk_size)
 
     pd.set_option('display.max_columns', None)
@@ -98,3 +98,11 @@ def test_split_coordinates_file(input_data, chunk_size, expected):
     result_subset = result[['chrom', 'start', 'end', 'vcf_prefix']].reset_index(drop=True)
 
     pd.testing.assert_frame_equal(result_subset, expected_df)
+
+
+def test_split_coordinates_file():
+
+    data = pd.read_csv(input_file, sep='\t')
+    result = split_coordinates_file(coordinates_file=data, gene_dict=gene_dict, chunk_size=30)
+
+    print(result)
