@@ -6,6 +6,7 @@ import pytest
 
 from makebgen.process_bgen.helper import split_coordinates_file
 
+# a bit of setting up
 test_data_dir = Path(__file__).parent / 'test_data'
 input_file = test_data_dir / 'test_coords_v2.txt'
 with open(test_data_dir / 'final_dict.json', 'r') as f:
@@ -27,8 +28,10 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             }),
             24257005,
             [
-                {'chrom': 'chr7_chunk1', 'start': 36432507, 'end': 60689512, 'vcf_prefix': 'test_input2'},
-                {'chrom': 'chr7_chunk3', 'start': 84946519, 'end': 100694238, 'vcf_prefix': 'test_input1'},
+                {'chrom': 'chr7_chunk1', 'start': 36432507, 'end': 36442739,
+                 'chunk_start': 36432507, 'chunk_end': 60689512, 'vcf_prefix': 'test_input2'},
+                {'chrom': 'chr7_chunk3', 'start': 100679512, 'end': 100694238,
+                 'chunk_start': 84946519, 'chunk_end': 100694238, 'vcf_prefix': 'test_input1'},
             ]
     ),
     # Test case 2: single record spans entire chunk
@@ -45,7 +48,8 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             }),
             250,
             [
-                {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300,
+                 'chunk_start': 100, 'chunk_end': 300, 'vcf_prefix': 'sample1'},
             ]
     ),
     # Test case 3: record overlaps multiple chunks
@@ -62,11 +66,13 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             }),
             300,
             [
-                {'chrom': 'chr2_chunk1', 'start': 100, 'end': 400, 'vcf_prefix': 'sample2'},
-                {'chrom': 'chr2_chunk2', 'start': 401, 'end': 700, 'vcf_prefix': 'sample2'},
+                {'chrom': 'chr2_chunk1', 'start': 100, 'end': 700,
+                 'chunk_start': 100, 'chunk_end': 400, 'vcf_prefix': 'sample2'},
+                {'chrom': 'chr2_chunk2', 'start': 100, 'end': 700,
+                 'chunk_start': 401, 'chunk_end': 700, 'vcf_prefix': 'sample2'},
             ]
     ),
-    # Additional tests
+    # Additional test cases:
     (
             pd.DataFrame({
                 'chrom': ['chr1', 'chr1', 'chr2'],
@@ -80,27 +86,41 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             }),
             300,
             [
-                {'chrom': 'chr1_chunk1', 'start': 100, 'end': 350, 'vcf_prefix': 'sample1'},
-                {'chrom': 'chr1_chunk2', 'start': 351, 'end': 600, 'vcf_prefix': 'sample1'},
-                {'chrom': 'chr2_chunk1', 'start': 601, 'end': 851, 'vcf_prefix': 'sample2'},
-                {'chrom': 'chr2_chunk2', 'start': 852, 'end': 900, 'vcf_prefix': 'sample2'},
+                {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300,
+                 'chunk_start': 100, 'chunk_end': 400, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr1_chunk1', 'start': 301, 'end': 600,
+                 'chunk_start': 100, 'chunk_end': 400, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr1_chunk2', 'start': 301, 'end': 600,
+                 'chunk_start': 401, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr2_chunk1', 'start': 601, 'end': 900,
+                 'chunk_start': 601, 'chunk_end': 900, 'vcf_prefix': 'sample2'},
             ]
     ),
 ])
-def test_split_coordinates_pytest(input_data, chunk_size, expected):
+def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, expected: pd.DataFrame):
+    """
+    Tests for the chunking method in BGEN files, using mark parametrize as our input data
+    """
+
+    # run the function
     result = split_coordinates_file(coordinates_file=input_data, gene_dict=gene_dict, chunk_size=chunk_size)
 
+    # just for display purposes, so we can see the whole df
     pd.set_option('display.max_columns', None)
-
     print(result)
 
+    # subset the data to test the columns that we need
     expected_df = pd.DataFrame(expected)
-    result_subset = result[['chrom', 'start', 'end', 'vcf_prefix']].reset_index(drop=True)
+    result_subset = result[['chrom', 'start', 'end', 'chunk_start', 'chunk_end', 'vcf_prefix']].reset_index(drop=True)
 
+    # run the pytest
     pd.testing.assert_frame_equal(result_subset, expected_df)
 
 
 def test_split_coordinates_file():
+    """
+    This is a pytest using more of a real-life example
+    """
 
     data = pd.read_csv(input_file, sep='\t')
     result = split_coordinates_file(coordinates_file=data, gene_dict=gene_dict, chunk_size=30)

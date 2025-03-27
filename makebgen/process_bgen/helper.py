@@ -9,10 +9,10 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: dict, chun
     """
     Splits the coordinates file into chunks based on the specified chunk size and gene dictionary.
 
-    :param coordinates_file: DataFrame containing the coordinates data.
-    :param gene_dict: Dictionary containing gene information with genomic locations.
-    :param chunk_size: Size of each chunk in base pairs. Default is 30 (interpreted as 30Mb).
-    :return: DataFrame with the coordinates split into chunks.
+    :param coordinates_file: DataFrame containing the coordinates data
+    :param gene_dict: Dictionary containing gene information with genomic locations
+    :param chunk_size: Size of each chunk in base pairs. Default is 30 (interpreted as 30Mb)
+    :return: DataFrame with the coordinates split into chunks
     """
 
     # first, if we are using a 30Mb chunk then we need to convert it to Mb
@@ -111,29 +111,55 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: dict, chun
             current_start = current_end + 1
             chunk_number += 1
 
-    # make a new dataframe
+    # make a new dataframe with the new chunks
     chunk_df = pd.DataFrame(chunks)
 
     return chunk_df
 
 
-def find_chunk_for_position(chrom_df, position):
+def find_chunk_for_position(chrom_df: pd.DataFrame, position: int) -> pd.Series:
+    """
+    Finds the chunk for a given position within our per-chromosome DataFrame. This is just a way
+    to locate a chunk in a given dataframe that pinpoints the position that we are working with.
+    In other words: 1 < our position (3) > 5 = you are in the chunk that's 1-5
+
+    :param chrom_df: DataFrame containing chromosome data with 'start' and 'end' columns.
+    :param position: The position to find the chunk for.
+    :return: A Series representing the chunk that contains the given position, or None if no chunk is found.
+    """
+    # find the chunk (i.e. row) that matches the position that we are working with
     match = chrom_df[(chrom_df['start'] <= position) & (chrom_df['end'] >= position)]
     if not match.empty:
         return match.iloc[0]
     else:
-        return None
+        # I believe we should always have a matching chunk (as there is already something in place for when
+        # we reach the limit of a chromosome), so this should throw an error
+        raise ValueError("No chunk found for the given position: " + str(position))
 
 
-def find_position_after_within_gene(chrom, gene_name, gene_df):
-    # Get all genes on this chromosome sorted by start
+def find_position_after_within_gene(chrom: str, gene_name: str, gene_df: pd.DataFrame) -> dict:
+    """
+    If our position falls within a gene, this is a way to find a position between this gene and the next gene that doesn't
+    overlap, and take the half-way point as our new break-point.
+    In other words, we want to create a break in a "junk" region between two non-overlapping genes and this should
+    help us do so.
+
+    :param chrom: Chromosome identifier (e.g., 'chr1')
+    :param gene_name: Name of the gene to find the position after (i.e. downstream of gene_name)
+    :param gene_df: DataFrame containing gene information with 'chrom', 'gene', 'start', and 'end' columns
+    :return: A dictionary with the position between the current gene and the next non-overlapping gene, or None if no such position is found
+    """
+    # Get all genes on this chromosome sorted by the start position (this data comes from our gene dictionary)
     genes_on_chrom = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
 
-    # Find the index of the current gene
+    # Find the index of the current gene that we are working with (i.e. our position is within a gene, what's the
+    # index of that gene?
     gene_idx = genes_on_chrom[genes_on_chrom['gene'] == gene_name].index
     if gene_idx.empty:
-        return None  # Gene not found
+        # this should never happen so add error catching here
+        raise ValueError("Our position did not match a gene... something weird going on with: " + str(gene_name))
 
+    # find the end of this gene
     gene_idx = gene_idx[0]
     current_end = genes_on_chrom.loc[gene_idx, 'end']
 
@@ -142,6 +168,8 @@ def find_position_after_within_gene(chrom, gene_name, gene_df):
         next_start = genes_on_chrom.loc[i, 'start']
         next_gene = genes_on_chrom.loc[i, 'gene']
 
+        # once we find a downstream gene, we want to record the new position that is in-between these
+        # two genes and also maybe the names of our genes...
         if next_start > current_end:
             midpoint = (current_end + next_start) // 2
             return {
@@ -154,11 +182,22 @@ def find_position_after_within_gene(chrom, gene_name, gene_df):
         current_end = max(current_end, genes_on_chrom.loc[i, 'end'])
 
     # If no non-overlapping downstream gene found
-    return None
+    raise ValueError("Couldn't find any downstream genes... something odd going on with: " + str(
+        genes_on_chrom.loc[gene_idx, 'gene']))
 
 
+def find_gene_context(chrom: str, position: int, gene_df: pd.DataFrame) -> dict:
+    """
+    Finds the gene context for a given position within a chromosome. In other words, we have a given position (which
+    might be a possible break point), but we want to know whether this position falls within a gene, or whether it
+    falls between two genes.
 
-def find_gene_context(chrom, position, gene_df):
+    :param chrom: Chromosome identifier (e.g., 'chr1')
+    :param position: The position to find the gene context for.
+    :param gene_df: DataFrame containing gene information with 'chrom', 'gene', 'start', and 'end' columns.
+    :return: A dictionary with the gene context, indicating whether the position is within a gene or between genes, and the closest upstream and downstream genes if applicable.
+    """
+
     # Filter to just the chromosome of interest
     genes_on_chrom = gene_df[gene_df['chrom'] == chrom]
 
@@ -168,12 +207,17 @@ def find_gene_context(chrom, position, gene_df):
         return {'status': 'within', 'genes': within['gene'].tolist()}
 
     # If not within, find closest upstream and downstream genes
+    # let's get all the upstream genes
     upstream = genes_on_chrom[genes_on_chrom['end'] < position]
+    # let's get all the downstream genes
     downstream = genes_on_chrom[genes_on_chrom['start'] > position]
-
+    # then let's find the closest upstream gene
     closest_up = upstream.iloc[upstream['end'].sub(position).abs().argmin()] if not upstream.empty else None
+    # and then let's find the closest downstream gene
     closest_down = downstream.iloc[downstream['start'].sub(position).abs().argmin()] if not downstream.empty else None
 
+    # if we are already between two genes then return this as our status, but also let us know what are the
+    # two genes that we are sandwiched between
     return {
         'status': 'between',
         'closest_upstream': closest_up['gene'] if closest_up is not None else None,
@@ -181,6 +225,10 @@ def find_gene_context(chrom, position, gene_df):
     }
 
 
-def sort_coordinates_by_position(df):
+def sort_coordinates_by_position(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Simple function to sort a dataframe based on chromosome number and start position
+    """
+
     df['chrom_num'] = df['chrom'].replace('chr', '')
     return df.sort_values(by=['chrom_num', 'start']).drop(columns='chrom_num')
