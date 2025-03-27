@@ -7,22 +7,24 @@
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
-import dxpy
 
-from general_utilities.job_management.thread_utility import ThreadUtility
-from general_utilities.mrc_logger import MRCLogger
+import dxpy
 from general_utilities.association_resources import (
     generate_linked_dx_file,
     download_dxfile_by_name,
     check_gzipped
 )
+from general_utilities.job_management.thread_utility import ThreadUtility
+from general_utilities.mrc_logger import MRCLogger
+
+from makebgen.process_bgen.helper import run_splitter
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
-def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
+def main(output_prefix: str, coordinate_file: dict, make_bcf: bool, gene_dict_file: dict, chunk_size: int = 30) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -33,12 +35,20 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
     :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
+    :param gene_dict_file: A dictionary with all genes and their positions
+    :param chunk_size: What rough chunk size to make the BGENs (for WGS); default is 30Mb
+
     :return: An output dictionary following DNANexus conventions.
     """
 
     # Get the processed coordinate file
     total_bcf = 0
     coordinate_path = download_dxfile_by_name(coordinate_file)
+    gene_dict = download_dxfile_by_name(gene_dict_file)
+
+    # change the input coordinates so that we make BGENs according to 30Mb chunks
+    run_splitter(coordinate_path, gene_dict, chunk_size)
+
     with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
 
@@ -47,7 +57,7 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
                                        error_message='A bcf to bgen thread failed')
         previous_vep_id = None
         for row in coord_file_reader:
-            total_bcf+=1
+            total_bcf += 1
             thread_utility.launch_job(make_bgen_from_vcf,
                                       vcf_id=row['output_bcf'],
                                       vep_id=row['output_vep'],

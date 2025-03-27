@@ -1,11 +1,32 @@
 """
 This script is designed to help with the processing of bgen files for WGS data.
 """
+import json
+from pathlib import Path
+from typing import Union
 
 import pandas as pd
 
 
-def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: dict, chunk_size: int = 30) -> pd.DataFrame:
+def run_splitter(coordinate_path: Union[pd.DataFrame, Path], gene_dict: Union[dict, Path], chunk_size: int = 30):
+    """
+    Run the splitter
+
+    :param coordinate_path: file with the original coordinates
+    :param gene_dict: dictionary object with gene positions
+    :param chunk_size: size chunk for chunking
+    """
+
+    # read in the original file
+    original_file = pd.read_csv(coordinate_path, sep='\t')
+    # do the splitting
+    modified_file = split_coordinates_file(original_file, gene_dict, chunk_size)
+    # output the coordinate file with chunking
+    modified_file.to_csv(coordinate_path, sep='\t')
+
+
+def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict, Path],
+                           chunk_size: int = 30) -> pd.DataFrame:
     """
     Splits the coordinates file into chunks based on the specified chunk size and gene dictionary.
 
@@ -15,10 +36,15 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: dict, chun
     :return: DataFrame with the coordinates split into chunks
     """
 
+    # read in the gene dictionary
+    if gene_dict == Path:
+        with open(gene_dict, 'r') as f:
+            gene_dict = json.load(f)
+
     # first, if we are using a 30Mb chunk then we need to convert it to Mb
     if chunk_size == 30:
         print("Creating 30Mb chunks for bgens")
-        # convert chunk size to megabase
+        # convert chunk size to mega base
         chunk_size = chunk_size * 1000000
     # if we are not (for testing purposes, I imagine) then use that instead
     else:

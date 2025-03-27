@@ -33,7 +33,7 @@ def pipeline_data():
 
 
 # Set this flag to True if you want to keep (copy) the temporary output files
-KEEP_TEMP = False
+KEEP_TEMP = True
 
 
 @pytest.fixture
