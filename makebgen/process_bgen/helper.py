@@ -113,7 +113,14 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
                     current_end = chrom_max_end
                 # otherwise, let's use this new in-between position as the end of our chunk
                 else:
-                    current_end = min(downstream['between_position'], chrom_max_end)
+                    current_end = min(current_start + chunk_size, chrom_max_end)
+
+                    # Extend chunk to include the full region of overlapping files
+                    overlapping_at_boundary = chrom_df[
+                        (chrom_df['start'] <= current_end) & (chrom_df['end'] > current_end)
+                        ]
+                    if not overlapping_at_boundary.empty:
+                        current_end = overlapping_at_boundary['end'].max()
 
             # Find all rows in coordinates_file that overlap with this chunk
             overlapping_rows = chrom_df[(chrom_df['end'] >= current_start) & (chrom_df['start'] <= current_end)]
