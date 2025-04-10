@@ -182,7 +182,7 @@ def write_vep_table(deduplicated_vep: pd.DataFrame, vcf_prefix: Path) -> Path:
     # ensure that vcf_prefix is a path-like object
     vcf_prefix = Path(vcf_prefix)
     # Add the suffix to the stem
-    vcf_path = vcf_prefix.with_name(vcf_prefix.stem + '.vep.tsv')
+    vcf_path = vcf_prefix.with_suffix('.vep.tsv')
     # export the data using the new filepath
     deduplicated_vep.to_csv(path_or_buf=vcf_path, na_rep='NA', index=False, sep="\t")
 
