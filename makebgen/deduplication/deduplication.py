@@ -235,13 +235,14 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path,
     :return: Path to the deduplicated BCF file.
     """
     print(query_string)
-    # if "|" in query_string:
-    #     raise ValueError("OR operator '|' not supported")
+    if "|" in query_string:
+        # raise ValueError("OR operator '|' not supported")
+        query_string = query_string.replace('|', r'\|')
 
     cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_prefix}.missingness_filtered.bcf'
     cmd_exec.run_cmd_on_docker(cmd)
 
     # And rename the deduped bcf to match the final one we want to output
-    old_vcf = Path(f'{vcf_prefix}.bcf')
+    old_vcf = Path(f'{vcf_prefix}.missingness_filtered.bcf')
     old_vcf.unlink()
     return Path(f'{vcf_prefix}.deduped.bcf').rename(old_vcf)
