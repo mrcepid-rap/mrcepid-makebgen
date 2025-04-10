@@ -39,7 +39,7 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
         vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
 
         # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
-        deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
+        deduplicate_variants(vep_id, previous_vep_id, vcf_prefix, vcf_path)
 
     else:
 
