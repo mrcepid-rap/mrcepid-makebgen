@@ -234,7 +234,7 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path,
     :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate.
     :return: Path to the deduplicated BCF file.
     """
-
+    print(query_string)
     if "|" in query_string:
         raise ValueError("OR operator '|' not supported")
 
