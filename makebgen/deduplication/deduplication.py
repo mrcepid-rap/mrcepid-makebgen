@@ -33,7 +33,7 @@ def deduplicate_variants(vep_id: Union[str, Path], previous_vep_id: Union[str, P
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
         LOGGER.warning(f'BCF with prefix {vcf_prefix} has {len(removed_df)} duplicate variants. Removing...')
         remove_query_string = build_query_string(removed_df)
-        remove_bcf_duplicates(remove_query_string, vcf_prefix, cmd_exec, vcf_path)
+        remove_bcf_duplicates(query_string=remove_query_string, vcf_prefix=vcf_prefix, vcf_path=vcf_path, cmd_exec=cmd_exec)
 
     return write_vep_table(deduped_df, vcf_prefix)
 
@@ -238,7 +238,7 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path, vcf_path: Path,
     """
 
     # Get the file name of the input VCF
-    input_vcf = Path(vcf_path).name
+    print(vcf_path)
 
     cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{input_vcf}.bcf'
     cmd_exec.run_cmd_on_docker(cmd)
