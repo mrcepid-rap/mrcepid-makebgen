@@ -161,17 +161,21 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     # Collect & concat VEP annotations at this time
     concat_vep = Path(f'{output_prefix}.vep.tsv')
     with concat_vep.open('w') as vep_writer:
+        all_lines = []
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
-
             current_vep = Path(f'{bgen_prefix}.vep.tsv')
             with current_vep.open('r') as vep_reader:
                 for line_n, line in enumerate(vep_reader):
                     if file_n == 0 and line_n == 0:  # Only write header of first file
                         vep_writer.write(line)
                     elif line_n != 0:
-                        vep_writer.write(line)
+                        all_lines.append(line)
 
-        current_vep.unlink()
+            current_vep.unlink()
+
+        # Sort the collected lines (excluding the header)
+        sorted_lines = sorted(all_lines, key=lambda vep_line: vep_line.split('\t')[1])
+        vep_writer.writelines(sorted_lines)
 
     # bgzip and tabix index the resulting annotations
     final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2)
