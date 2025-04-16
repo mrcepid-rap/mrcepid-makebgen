@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Dict, Union
-
+import re
 import dxpy
 from general_utilities.association_resources import download_dxfile_by_name, replace_multi_suffix, bgzip_and_tabix
 from general_utilities.import_utils.import_lib import input_filetype_parser
@@ -143,8 +143,13 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     final_bgen = Path(f'{output_prefix}.bgen')
     final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
 
-    # Sort the bgen files according to coordinate
-    sorted_bgen_prefixes = sorted(bgen_prefixes)
+    # Sort the bgen prefixes by their coordinate values. The sorting key splits each string into numeric and non-numeric parts
+    # using a regular expression. Numeric parts are converted to integers for proper numerical sorting, while non-numeric
+    # parts remain as strings. This ensures a natural sort order (e.g., "file1", "file2", "file10")
+    sorted_bgen_prefixes = sorted(
+        bgen_prefixes,
+        key=lambda s: [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', s)]
+    )
 
     # Create a correct sample file:
     final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)
@@ -161,21 +166,17 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     # Collect & concat VEP annotations at this time
     concat_vep = Path(f'{output_prefix}.vep.tsv')
     with concat_vep.open('w') as vep_writer:
-        all_lines = []
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
+
             current_vep = Path(f'{bgen_prefix}.vep.tsv')
             with current_vep.open('r') as vep_reader:
                 for line_n, line in enumerate(vep_reader):
                     if file_n == 0 and line_n == 0:  # Only write header of first file
                         vep_writer.write(line)
                     elif line_n != 0:
-                        all_lines.append(line)
+                        vep_writer.write(line)
 
-            current_vep.unlink()
-
-        # Sort the collected lines (excluding the header)
-        sorted_lines = sorted(all_lines, key=lambda vep_line: vep_line.split('\t')[1])
-        vep_writer.writelines(sorted_lines)
+        current_vep.unlink()
 
     # bgzip and tabix index the resulting annotations
     final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2)
