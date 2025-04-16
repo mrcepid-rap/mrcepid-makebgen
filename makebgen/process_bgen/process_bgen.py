@@ -143,11 +143,13 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     final_bgen = Path(f'{output_prefix}.bgen')
     final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
 
-    # sort the bgen files by the start position to make sure that they are truly in the correct order
-    sorted_bgen_prefixes = sorted(
-        bgen_prefixes,
-        key=lambda prefix: prefix[1]
-    )
+    # sort the bgen files by the start position to make sure that they are truly in the correct order, but store
+    # the original prefix for the final bgen file - note the test data should be sorted in the opposite order
+    # (i.e. ['test_input2', 'test_input1'])
+    sorted_bgen_prefixes = [item[0] for item in sorted(
+        bgen_prefixes.items(),
+        key=lambda item: item[1]
+    )]
 
     # Create a correct sample file:
     final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)
