@@ -143,12 +143,10 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     final_bgen = Path(f'{output_prefix}.bgen')
     final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
 
-    # Sort the bgen prefixes by their coordinate values. The sorting key splits each string into numeric and non-numeric parts
-    # using a regular expression. Numeric parts are converted to integers for proper numerical sorting, while non-numeric
-    # parts remain as strings. This ensures a natural sort order (e.g., "file1", "file2", "file10")
+    # sort the bgen files by the start position to make sure that they are truly in the correct order
     sorted_bgen_prefixes = sorted(
         bgen_prefixes,
-        key=lambda s: [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', s)]
+        key=lambda prefix: prefix[1]
     )
 
     # Create a correct sample file:
