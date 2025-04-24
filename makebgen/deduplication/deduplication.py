@@ -4,7 +4,7 @@ from typing import Tuple, Optional, Union
 
 import dxpy
 import pandas as pd
-from general_utilities.import_utils.import_lib import input_filetype_parser
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.command_executor import build_default_command_executor, CommandExecutor
 from general_utilities.mrc_logger import MRCLogger
 
@@ -38,7 +38,7 @@ def deduplicate_variants(vep_id: Union[str, Path], previous_vep_id: Union[str, P
     return write_vep_table(deduped_df, vcf_prefix)
 
 
-def load_vep(vep_id: Union[Path, str]) -> Optional[pd.DataFrame]:
+def load_vep(vep_id: InputFileHandler) -> Optional[pd.DataFrame]:
     """Read a VEP annotation into a pandas DataFrame.
 
     This method is a simple wrapper for :func:`pd.read_csv` which will *stream* a vep annotation for the given
@@ -64,10 +64,11 @@ def load_vep(vep_id: Union[Path, str]) -> Optional[pd.DataFrame]:
         #
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        if isinstance(input_filetype_parser(vep_id), dxpy.DXFile):
+        if isinstance(vep_id.file_type, dxpy.DXFile):
             current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t",
                                      index_col=False)
         else:
+            vep_id = vep_id.get_file_handle()
             current_df = pd.read_csv(gzip.open(Path(vep_id)), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline

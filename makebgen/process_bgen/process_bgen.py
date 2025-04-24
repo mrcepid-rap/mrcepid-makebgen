@@ -30,6 +30,9 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
+    ### NOTE:
+    # try and convert this function to work with pysam & bgen modules if possible
+
     if isinstance(input_filetype_parser(vcf_id), dxpy.DXFile):
 
         vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
