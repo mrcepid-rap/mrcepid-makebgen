@@ -4,7 +4,7 @@ from typing import Tuple, Optional, Union
 
 import dxpy
 import pandas as pd
-from general_utilities.import_utils.import_lib import input_filetype_parser
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.command_executor import build_default_command_executor, CommandExecutor
 from general_utilities.mrc_logger import MRCLogger
 
@@ -13,13 +13,14 @@ CMD_EXEC = build_default_command_executor()
 
 
 def deduplicate_variants(vep_id: Union[str, Path], previous_vep_id: Union[str, Path], vcf_prefix: Union[str, Path],
-                         cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
+                         vcf_path: Path, cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
     """Entry point into the various deduplication methods in this module. This method only handles the logic flow of
     running the other methods.
 
     :param vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the VCF
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate
+    :param vcf_path: A Path object pointing to the VCF file to deduplicate
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: Path to the written VEP annotation file.
     """
@@ -32,12 +33,12 @@ def deduplicate_variants(vep_id: Union[str, Path], previous_vep_id: Union[str, P
     if len(removed_df) != 0:  # Only do the bcf if we have ≥ 1 variant to exclude
         LOGGER.warning(f'BCF with prefix {vcf_prefix} has {len(removed_df)} duplicate variants. Removing...')
         remove_query_string = build_query_string(removed_df)
-        remove_bcf_duplicates(remove_query_string, vcf_prefix, cmd_exec)
+        remove_bcf_duplicates(query_string=remove_query_string, vcf_prefix=vcf_prefix, vcf_path=vcf_path, cmd_exec=cmd_exec)
 
     return write_vep_table(deduped_df, vcf_prefix)
 
 
-def load_vep(vep_id: Union[Path, str]) -> Optional[pd.DataFrame]:
+def load_vep(vep_id: InputFileHandler) -> Optional[pd.DataFrame]:
     """Read a VEP annotation into a pandas DataFrame.
 
     This method is a simple wrapper for :func:`pd.read_csv` which will *stream* a vep annotation for the given
@@ -63,10 +64,11 @@ def load_vep(vep_id: Union[Path, str]) -> Optional[pd.DataFrame]:
         #
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        if isinstance(input_filetype_parser(vep_id), dxpy.DXFile):
+        if isinstance(vep_id.file_type, dxpy.DXFile):
             current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t",
                                      index_col=False)
         else:
+            vep_id = vep_id.get_file_handle()
             current_df = pd.read_csv(gzip.open(Path(vep_id)), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
@@ -181,7 +183,7 @@ def write_vep_table(deduplicated_vep: pd.DataFrame, vcf_prefix: Path) -> Path:
     # ensure that vcf_prefix is a path-like object
     vcf_prefix = Path(vcf_prefix)
     # Add the suffix to the stem
-    vcf_path = vcf_prefix.with_name(vcf_prefix.stem + '.vep.tsv')
+    vcf_path = vcf_prefix.parent / (vcf_prefix.name + '.vep.tsv')
     # export the data using the new filepath
     deduplicated_vep.to_csv(path_or_buf=vcf_path, na_rep='NA', index=False, sep="\t")
 
@@ -222,7 +224,7 @@ def build_query_string(removed_df: pd.DataFrame) -> str:
 
 
 # Helper function for make_bgen_from_vcf() to remove sites identified as duplicate in process_vep() from the bcf
-def remove_bcf_duplicates(query_string: str, vcf_prefix: Path,
+def remove_bcf_duplicates(query_string: str, vcf_prefix: Path, vcf_path: Path,
                           cmd_exec: CommandExecutor = CMD_EXEC) -> Path:
     """Remove duplicate variants using bcftools view.
 
@@ -230,18 +232,16 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path,
     deduplication, the original BCF file is deleted and the deduplicated BCF is renamed to the original BCF name.
 
     :param query_string: The query string to pass to bcftools view from :func:`build_query_string`.
-    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :param vcf_prefix: A Path object pointing to the VCF prefix of the file to deduplicate.
+    :param vcf_path: A Path object pointing to the VCF file to deduplicate.
+    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: Path to the deduplicated BCF file.
     """
 
-    if "|" in query_string:
-        raise ValueError("OR operator '|' not supported")
-
-    cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_prefix}.bcf'
+    cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_path}'
     cmd_exec.run_cmd_on_docker(cmd)
 
     # And rename the deduped bcf to match the final one we want to output
-    old_vcf = Path(f'{vcf_prefix}.bcf')
+    old_vcf = Path(f'{vcf_path}')
     old_vcf.unlink()
     return Path(f'{vcf_prefix}.deduped.bcf').rename(old_vcf)

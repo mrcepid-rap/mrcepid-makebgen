@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Dict, Union
-
+import re
 import dxpy
 from general_utilities.association_resources import download_dxfile_by_name, replace_multi_suffix, bgzip_and_tabix
 from general_utilities.import_utils.import_lib import input_filetype_parser
@@ -30,6 +30,9 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
+    ### NOTE:
+    # try and convert this function to work with pysam & bgen modules if possible
+
     if isinstance(input_filetype_parser(vcf_id), dxpy.DXFile):
 
         vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
@@ -39,7 +42,7 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
         vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
 
         # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
-        deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
+        deduplicate_variants(vep_id=vep_id, previous_vep_id=previous_vep_id, vcf_prefix=vcf_prefix, vcf_path=vcf_path)
 
     else:
 
@@ -143,8 +146,13 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     final_bgen = Path(f'{output_prefix}.bgen')
     final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
 
-    # Sort the bgen files according to coordinate
-    sorted_bgen_prefixes = sorted(bgen_prefixes)
+    # sort the bgen files by the start position to make sure that they are truly in the correct order, but store
+    # the original prefix for the final bgen file - note the test data should be sorted in the opposite order
+    # (i.e. ['test_input2', 'test_input1'])
+    sorted_bgen_prefixes = [item[0] for item in sorted(
+        bgen_prefixes.items(),
+        key=lambda item: item[1]
+    )]
 
     # Create a correct sample file:
     final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)

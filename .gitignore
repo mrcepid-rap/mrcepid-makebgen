@@ -3,6 +3,8 @@
 
 # PyCharm project files
 .idea/
+build
+makebgen.egg-info/
 
 # Python cache files
 makebgen/__pycache__/
@@ -12,6 +14,7 @@ test/__pycache__/
 
 # Poetry lock file
 poetry.lock
+uv.lock
 
 # Test logs
 test/dx_run.log
@@ -20,4 +23,4 @@ dx_run.log
 test/.coverage
 
 # Test files
-test/test_data/formatted_coords.txt
+test/test_data/formatted_coords.txt!/uv.lock

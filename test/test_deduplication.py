@@ -113,6 +113,7 @@ def test_deduplicate_variants(temporary_path, coordinate_path):
             deduplicate_variants(
                 vep_id=Path(row['output_vep']),
                 previous_vep_id=previous_vep_id,
+                vcf_path=vcf_path,
                 vcf_prefix=vcf_prefix
             )
 
