@@ -8,7 +8,7 @@ from typing import Union
 import pandas as pd
 
 
-def run_splitter(coordinate_path: Union[pd.DataFrame, Path], gene_dict: Union[dict, Path], chunk_size: int = 30):
+def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path], chunk_size: int = 30):
     """
     Run the splitter
 
@@ -22,8 +22,7 @@ def run_splitter(coordinate_path: Union[pd.DataFrame, Path], gene_dict: Union[di
     # do the splitting
     modified_file = split_coordinates_file(original_file, gene_dict, chunk_size)
     # output the coordinate file with chunking
-    modified_file.to_csv(coordinate_path, sep='\t')
-
+    modified_file.to_csv(coordinate_path.parent / (coordinate_path.stem + "_with_chunking.csv"), sep='\t')
 
 def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict, Path],
                            chunk_size: int = 30) -> pd.DataFrame:
@@ -262,6 +261,7 @@ def sort_coordinates_by_position(df: pd.DataFrame) -> pd.DataFrame:
     """
     Simple function to sort a dataframe based on chromosome number and start position
     """
+    print(df['chrom'])
 
     df['chrom_num'] = df['chrom'].replace('chr', '')
     return df.sort_values(by=['chrom_num', 'start']).drop(columns='chrom_num')

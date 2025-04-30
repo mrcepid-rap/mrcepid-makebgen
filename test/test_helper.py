@@ -117,12 +117,22 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
     pd.testing.assert_frame_equal(result_subset, expected_df)
 
 
-def test_split_coordinates_file():
+@pytest.mark.parametrize(
+    argnames=['input_data', 'chunk_size'],
+    argvalues=[
+        (Path("test_coords.txt"), 30),
+        (Path("test_coords_v2.txt"), 30),
+        (Path("formatted_coords.txt"), 30),
+        (Path("test_coordinates.txt"), 30),
+    ]
+)
+def test_split_coordinates_file(input_data, chunk_size):
     """
     This is a pytest using more of a real-life example
     """
 
-    data = pd.read_csv(input_file, sep='\t')
-    result = split_coordinates_file(coordinates_file=data, gene_dict=gene_dict, chunk_size=30)
+    data = pd.read_csv(test_data_dir / input_data, sep='\t')
+    result = split_coordinates_file(coordinates_file=data, gene_dict=gene_dict, chunk_size=chunk_size)
+    result.to_csv(input_data.parent / (input_data.stem + "_with_chunking.csv"), sep='\t')
 
     print(result)
