@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
-from typing import Dict, Union
-import re
+from typing import Dict
+
 import dxpy
-from general_utilities.association_resources import download_dxfile_by_name, replace_multi_suffix, bgzip_and_tabix
-from general_utilities.import_utils.import_lib import input_filetype_parser
+from general_utilities.association_resources import replace_multi_suffix, bgzip_and_tabix
+from general_utilities.import_utils.import_lib import InputFileHandler
 from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
 
 from makebgen.deduplication.deduplication import deduplicate_variants
@@ -14,7 +14,8 @@ from makebgen.deduplication.deduplication import deduplicate_variants
 CMD_EXEC = build_default_command_executor()
 
 
-def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
+def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
+                       input_coordinates=InputFileHandler,
                        cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
@@ -26,6 +27,7 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param start: Start coordinate for this chunk
     :param make_bcf: Is a bcf being made for this chromosome?
+    :param input_coordinates: InputFileHandler object containing the coordinates filepath
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
@@ -33,24 +35,15 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
     ### NOTE:
     # try and convert this function to work with pysam & bgen modules if possible
 
-    if isinstance(input_filetype_parser(vcf_id), dxpy.DXFile):
+    # download the file
+    vcf_path = vcf_id
 
-        vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
+    # Set names and DXPY files for bcf/vep file
+    # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
+    vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0]).stem
 
-        # Set names and DXPY files for bcf/vep file
-        # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
-        vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
-
-        # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
-        deduplicate_variants(vep_id=vep_id, previous_vep_id=previous_vep_id, vcf_prefix=vcf_prefix, vcf_path=vcf_path)
-
-    else:
-
-        # if not using DNA Nexus we can assign a local path to the vcf_path variable
-        vcf_path = Path(vcf_id)
-
-        # also, we can change the filepath so that we keep the prefix only
-        vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0]).stem
+    # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
+    deduplicate_variants(vep_id=vep_id, previous_vep_id=previous_vep_id, vcf_prefix=vcf_prefix, vcf_path=vcf_path)
 
     # And convert processed bcf into bgenv1.2
     cmd = f'plink2 --threads 2 --memory 10000 ' \
@@ -64,8 +57,7 @@ def make_bgen_from_vcf(vcf_id: Union[str, Path], vep_id: str, previous_vep_id: s
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
     # Note, for now let's only do this if we are running on DNA Nexus
-
-    if isinstance(input_filetype_parser(vcf_id), dxpy.DXFile):
+    if isinstance(input_coordinates.get_file_type(), dxpy.DXFile):
 
         if not make_bcf:
             vcf_path.unlink()

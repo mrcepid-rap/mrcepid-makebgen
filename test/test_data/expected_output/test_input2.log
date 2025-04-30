@@ -9,12 +9,12 @@ Options in effect:
   --threads 2
   --vcf-half-call r
 
-Hostname: e98ea935c9b9
+Hostname: d586007610d0
 Working directory: /
-Start time: Wed Feb  5 14:27:28 2025
+Start time: Wed Apr 30 12:02:30 2025
 
-Random number seed: 1738765648
-7836 MiB RAM detected, ~6140 available; reserving 6076 MiB for main workspace.
+Random number seed: 1746014550
+7836 MiB RAM detected, ~3510 available; reserving 3446 MiB for main workspace.
 Using up to 2 compute threads.
 --bcf: 558 variants scanned.
 --bcf: /test/test_input2-temporary.pgen + /test/test_input2-temporary.pvar.zst
@@ -26,4 +26,4 @@ Note: No phenotype data present.
 Writing /test/test_input2.bgen ... done.
 Writing /test/test_input2.sample ... done.
 
-End time: Wed Feb  5 14:27:28 2025
+End time: Wed Apr 30 12:02:30 2025
