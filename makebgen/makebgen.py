@@ -9,9 +9,7 @@
 import csv
 
 import dxpy
-from general_utilities.association_resources import (
-    check_gzipped
-)
+from general_utilities.association_resources import check_gzipped
 from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.thread_utility import ThreadUtility
