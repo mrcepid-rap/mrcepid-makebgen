@@ -9,6 +9,7 @@
 import csv
 
 import dxpy
+<<<<<<< HEAD
 from general_utilities.association_resources import (
     generate_linked_dx_file,
     download_dxfile_by_name,
@@ -18,13 +19,25 @@ from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.helper import run_splitter
+=======
+from general_utilities.association_resources import check_gzipped
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
+from general_utilities.job_management.thread_utility import ThreadUtility
+from general_utilities.mrc_logger import MRCLogger
+
+>>>>>>> v2.0.0
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
+<<<<<<< HEAD
 def main(output_prefix: str, coordinate_file: dict, make_bcf: bool, gene_dict_file: dict, chunk_size: int = 30) -> dict:
+=======
+def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
+>>>>>>> v2.0.0
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -43,11 +56,18 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool, gene_dict_fi
 
     # Get the processed coordinate file
     total_bcf = 0
+<<<<<<< HEAD
     coordinate_path = download_dxfile_by_name(coordinate_file)
     gene_dict = download_dxfile_by_name(gene_dict_file)
 
     # change the input coordinates so that we make BGENs according to 30Mb chunks
     run_splitter(coordinate_path, gene_dict, chunk_size)
+=======
+
+    # start the file parser class and get the coordinates file
+    coordinates = InputFileHandler(coordinate_file)
+    coordinate_path = coordinates.get_file_handle()
+>>>>>>> v2.0.0
 
     with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
@@ -63,7 +83,8 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool, gene_dict_fi
                                       vep_id=row['output_vep'],
                                       previous_vep_id=previous_vep_id,
                                       start=row['start'],
-                                      make_bcf=make_bcf)
+                                      make_bcf=make_bcf,
+                                      input_coordinates=coordinates)
             previous_vep_id = row['output_vep']
 
         # And gather the resulting futures which are returns of all bgens we need to concatenate:

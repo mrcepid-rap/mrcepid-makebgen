@@ -38,7 +38,7 @@ def deduplicate_variants(vep_id: Union[str, Path], previous_vep_id: Union[str, P
     return write_vep_table(deduped_df, vcf_prefix)
 
 
-def load_vep(vep_id: InputFileHandler) -> Optional[pd.DataFrame]:
+def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
     """Read a VEP annotation into a pandas DataFrame.
 
     This method is a simple wrapper for :func:`pd.read_csv` which will *stream* a vep annotation for the given
@@ -59,16 +59,17 @@ def load_vep(vep_id: InputFileHandler) -> Optional[pd.DataFrame]:
     if vep_id is None:
         return None
     else:
+        vep_file = InputFileHandler(vep_id)
+        vep_id = vep_file.get_file_handle()
         # We stream the .vep annotation from dnanexus as it is faster for smaller files like this, and ensures that we don't
         # generate race conditions when loading the same file twice (which we do to check for duplicates...)
         #
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        if isinstance(vep_id.file_type, dxpy.DXFile):
+        if isinstance(vep_file.get_file_type(), dxpy.DXFile):
             current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t",
                                      index_col=False)
         else:
-            vep_id = vep_id.get_file_handle()
             current_df = pd.read_csv(gzip.open(Path(vep_id)), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
@@ -237,6 +238,7 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path, vcf_path: Path,
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: Path to the deduplicated BCF file.
     """
+    print(vcf_path)
 
     cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_path}'
     cmd_exec.run_cmd_on_docker(cmd)

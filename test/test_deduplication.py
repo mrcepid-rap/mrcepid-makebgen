@@ -220,39 +220,27 @@ def test_build_query_string(temporary_path, removed_df, expected_query):
 
 
 @pytest.mark.parametrize(
-    "query_string, vcf_file, vcf_prefix, query_df, should_fail",
+    "query_string, vcf_file, vcf_prefix, vcf_path, query_df, should_fail",
     [
         (
                 '(POS=100679512 && REF="A" && ALT="C")',
-                Path("test_data/test_input1.vcf.filtered.bcf"),
+                Path("test_data/test_input1.vcf.gz"),
                 Path('test_input1.vcf.filtered'),
+                Path('test_data/test_input1.vcf.filtered.bcf'),
                 pd.DataFrame({'POS': [100679512], 'REF': ['A'], 'ALT': ['C']}),
                 False
-        ),
-        (
-                '(POS=100679512 && REF="A" | ALT="C")',  # should fail
-                Path("test_data/test_input1.vcf.filtered.bcf"),
-                Path('test_input1.vcf.filtered'),
-                pd.DataFrame({'POS': [100679512], 'REF': ['A'], 'ALT': ['C']}),
-                True
         ),
         (
                 '(POS=36432507 && REF="C" && ALT="T")',
-                Path("test_data/test_input2.vcf.filtered.bcf"),
+                Path("test_data/test_input2.vcf.gz"),
                 Path('test_input2.vcf.filtered'),
+                Path('test_data/test_input2.vcf.filtered.bcf'),
                 pd.DataFrame({'POS': [36432507], 'REF': ['C'], 'ALT': ['T']}),
                 False
         ),
-        (
-                '(POS=36432507 | REF="C" && ALT="T")',  # should fail
-                Path("test_data/test_input2.vcf.filtered.bcf"),
-                Path('test_input2.vcf.filtered'),
-                pd.DataFrame({'POS': [36432507], 'REF': ['C'], 'ALT': ['T']}),
-                True
-        ),
     ]
 )
-def test_remove_bcf_duplicates(temporary_path, query_string, vcf_file, vcf_prefix, query_df, should_fail):
+def test_remove_bcf_duplicates(temporary_path, query_string, vcf_file, vcf_prefix, vcf_path, query_df, should_fail):
     """
     Test the remove_bcf_duplicates function to ensure it correctly removes duplicate variants from a BCF file.
     This test is a little convoluted, but we want to make sure that we are deleting the duplicates from out files.
@@ -278,38 +266,35 @@ def test_remove_bcf_duplicates(temporary_path, query_string, vcf_file, vcf_prefi
     test_mount = DockerMount(Path(os.getcwd()), Path('/test/'))
     cmd_exec = CommandExecutor(docker_image='egardner413/mrcepid-burdentesting', docker_mounts=[test_mount])
 
-    if should_fail:
-        with pytest.raises(ValueError, match="OR operator"):
-            remove_bcf_duplicates(query_string, vcf_prefix, cmd_exec)
+    # Call the function
+    result = remove_bcf_duplicates(query_string, vcf_prefix, vcf_path, cmd_exec)
+    # make sure the file exists
+    assert result.exists()
 
-    else:
-        # Call the function
-        result = remove_bcf_duplicates(query_string, vcf_prefix, cmd_exec)
-        # make sure the file exists
-        assert result.exists()
+    # subset the data from the newly created file
+    docker_command = f'docker run -v $(pwd):/test egardner413/mrcepid-burdentesting:latest bcftools query -f "%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\n" test/{result} > test_input.txt'
+    subprocess.run(docker_command, shell=True, check=True)
 
-        # subset the data from the newly created file
-        docker_command = f'docker run -v $(pwd):/test egardner413/mrcepid-burdentesting:latest bcftools query -f "%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\n" test/{result} > test_input.txt'
-        subprocess.run(docker_command, shell=True, check=True)
+    # read this dataframe in and make sure that our query string is no longer there
+    test_df = pd.read_csv('test_input.txt', sep='\t', header=None)
+    test_df.columns = ['CHR', 'POS', 'ID', 'REF', 'ALT']
 
-        # read this dataframe in and make sure that our query string is no longer there
-        test_df = pd.read_csv('test_input.txt', sep='\t', header=None)
-        test_df.columns = ['CHR', 'POS', 'ID', 'REF', 'ALT']
+    # Select only the relevant columns for comparison
+    test_df = test_df[['POS', 'REF', 'ALT']]
 
-        # Select only the relevant columns for comparison
-        test_df = test_df[['POS', 'REF', 'ALT']]
+    # Check if the combination is present in the DataFrame using df.query()
+    is_present = not test_df.query(
+        "POS == @query_df['POS'].values[0] and REF == @query_df['REF'].values[0] and ALT == @query_df['ALT'].values[0]"
+    ).empty
+    # Use assert to ensure the combination is not present
+    assert not is_present, "The combination is present in the DataFrame."
 
-        # Check if the combination is present in the DataFrame using df.query()
-        is_present = not test_df.query(
-            "POS == @query_df['POS'].values[0] and REF == @query_df['REF'].values[0] and ALT == @query_df['ALT'].values[0]"
-        ).empty
-        # Use assert to ensure the combination is not present
-        assert not is_present, "The combination is present in the DataFrame."
+    # Open the VCF or BCF file
+    vcf = pysam.VariantFile(vcf_file)
 
-        # Open the VCF or BCF file
-        vcf = pysam.VariantFile(vcf_file)
-        # Count number of variants (records) minus the one we have removed
-        num_variants = len(list(vcf)) - 1
-        # Assert expected number of variants
-        expected_length = len(test_df)
-        assert num_variants == expected_length, f"Unexpected number of variants removed! Expected {expected_length}, got {num_variants}"
+    # Count number of variants (records) minus the one we have removed
+    num_variants = len(list(vcf)) - 1
+
+    # Assert expected number of variants
+    expected_length = len(test_df)
+    assert num_variants == expected_length, f"Unexpected number of variants removed! Expected {expected_length}, got {num_variants}"

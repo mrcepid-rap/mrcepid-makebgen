@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 from bgen import BgenReader
 from general_utilities.association_resources import check_gzipped
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.command_executor import DockerMount, CommandExecutor
 
 from makebgen.process_bgen.process_bgen import make_bgen_from_vcf, correct_sample_file, make_final_bgen
@@ -118,6 +119,7 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, formatted_coords_file
 
     # Use the formatted coordinates file from the fixture
     new_coords = formatted_coords_file
+    input_coords = InputFileHandler(new_coords)
 
     # we need to create a docker image locally
     test_mount = DockerMount(Path(os.getcwd()), Path('/test/'))
@@ -136,6 +138,7 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, formatted_coords_file
                 previous_vep_id=previous_vep_id,
                 start=row['start'],
                 make_bcf=make_bcf,
+                input_coordinates=input_coords,
                 cmd_exec=cmd_exec,
             )
             previous_vep_id = row['output_vep']
