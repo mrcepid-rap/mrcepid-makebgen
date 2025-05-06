@@ -2,15 +2,20 @@ import os
 from pathlib import Path
 from typing import Dict
 
-from general_utilities.association_resources import download_dxfile_by_name, replace_multi_suffix, bgzip_and_tabix
+import dxpy
+from general_utilities.association_resources import replace_multi_suffix, bgzip_and_tabix
+from general_utilities.import_utils.import_lib import InputFileHandler
 from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
+
 from makebgen.deduplication.deduplication import deduplicate_variants
 
 # Small note to explain logic – When CMD EXEC is passed to functions, it is to enable functional testing rather than
 # end-to-end testing outside the DNANexus environment. During 'normal' execution the global CMD_EXEC is used.
 CMD_EXEC = build_default_command_executor()
 
-def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
+
+def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
+                       input_coordinates=InputFileHandler,
                        cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
@@ -22,18 +27,23 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param start: Start coordinate for this chunk
     :param make_bcf: Is a bcf being made for this chromosome?
+    :param input_coordinates: InputFileHandler object containing the coordinates filepath
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
 
-    vcf_path = download_dxfile_by_name(vcf_id, print_status=False)
+    ### NOTE:
+    # try and convert this function to work with pysam & bgen modules if possible
+
+    # download the file
+    vcf_path = vcf_id
 
     # Set names and DXPY files for bcf/vep file
     # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
-    vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0])
+    vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0]).stem
 
     # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
-    deduplicate_variants(vep_id, previous_vep_id, vcf_prefix)
+    deduplicate_variants(vep_id=vep_id, previous_vep_id=previous_vep_id, vcf_prefix=vcf_prefix, vcf_path=vcf_path)
 
     # And convert processed bcf into bgenv1.2
     cmd = f'plink2 --threads 2 --memory 10000 ' \
@@ -46,12 +56,16 @@ def make_bgen_from_vcf(vcf_id: str, vep_id: str, previous_vep_id: str, start: in
     cmd_exec.run_cmd_on_docker(cmd)
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
-    if not make_bcf:
-        vcf_path.unlink()
+    # Note, for now let's only do this if we are running on DNA Nexus
+    if isinstance(input_coordinates.get_file_type(), dxpy.DXFile):
+
+        if not make_bcf:
+            vcf_path.unlink()
 
     # Return both the processed prefix and the start coordinate to enable easy merging/sorting
     return {'vcfprefix': vcf_prefix,
             'start': start}
+
 
 def correct_sample_file(template_sample: Path, output_prefix: str) -> Path:
     """Correct the incorrect sample from plink2
@@ -124,8 +138,13 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     final_bgen = Path(f'{output_prefix}.bgen')
     final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
 
-    # Sort the bgen files according to coordinate
-    sorted_bgen_prefixes = sorted(bgen_prefixes)
+    # sort the bgen files by the start position to make sure that they are truly in the correct order, but store
+    # the original prefix for the final bgen file - note the test data should be sorted in the opposite order
+    # (i.e. ['test_input2', 'test_input1'])
+    sorted_bgen_prefixes = [item[0] for item in sorted(
+        bgen_prefixes.items(),
+        key=lambda item: item[1]
+    )]
 
     # Create a correct sample file:
     final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)

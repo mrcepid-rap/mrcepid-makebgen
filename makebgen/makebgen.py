@@ -7,22 +7,21 @@
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
-import dxpy
 
+import dxpy
+from general_utilities.association_resources import check_gzipped
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
-from general_utilities.association_resources import (
-    generate_linked_dx_file,
-    download_dxfile_by_name,
-    check_gzipped
-)
+
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
-def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
+def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -38,7 +37,11 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
 
     # Get the processed coordinate file
     total_bcf = 0
-    coordinate_path = download_dxfile_by_name(coordinate_file)
+
+    # start the file parser class and get the coordinates file
+    coordinates = InputFileHandler(coordinate_file)
+    coordinate_path = coordinates.get_file_handle()
+
     with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
 
@@ -47,13 +50,14 @@ def main(output_prefix: str, coordinate_file: dict, make_bcf: bool) -> dict:
                                        error_message='A bcf to bgen thread failed')
         previous_vep_id = None
         for row in coord_file_reader:
-            total_bcf+=1
+            total_bcf += 1
             thread_utility.launch_job(make_bgen_from_vcf,
                                       vcf_id=row['output_bcf'],
                                       vep_id=row['output_vep'],
                                       previous_vep_id=previous_vep_id,
                                       start=row['start'],
-                                      make_bcf=make_bcf)
+                                      make_bcf=make_bcf,
+                                      input_coordinates=coordinates)
             previous_vep_id = row['output_vep']
 
         # And gather the resulting futures which are returns of all bgens we need to concatenate:
