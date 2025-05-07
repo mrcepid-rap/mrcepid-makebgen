@@ -8,9 +8,19 @@ from typing import Union
 import pandas as pd
 
 
-def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path], chunk_size: int = 30):
+def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path, str], chunk_size: int = 3):
     """
-    Run the splitter
+    Run the splitter.
+
+    The aim of this function is to take the coordinate file and split it into chunks. This is because the WGS bgen
+    files are very large, so we can only merge chunks of certain sizes.
+
+    The default chunk size is 3Mb, but this can be changed to a custom size.
+
+    The way that chunking works is we take the start position of a file, apply the 3Mb chunk size, and then make sure that
+    the chunk does not overlap with any genes. If it does, we adjust the chunk to avoid the gene, but setting the chunk
+    end between two genes. We also ensure that  the chunk end does not overlap with the next file.
+    If it does, we adjust the chunk to end at the end position of the file.
 
     :param coordinate_path: file with the original coordinates
     :param gene_dict: dictionary object with gene positions
@@ -22,30 +32,33 @@ def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path], chunk_si
     # do the splitting
     modified_file = split_coordinates_file(original_file, gene_dict, chunk_size)
     # output the coordinate file with chunking
-    modified_file.to_csv(coordinate_path.parent / (coordinate_path.stem + "_with_chunking.csv"), sep='\t')
+    # create output path
+    output_path = coordinate_path.parent / f"{coordinate_path.stem}_with_chunking.csv"
+    modified_file.to_csv(output_path, sep='\t')
+    # return the modified file
+    return output_path
+
 
 def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict, Path],
-                           chunk_size: int = 30) -> pd.DataFrame:
+                           chunk_size: int = 3) -> pd.DataFrame:
     """
     Splits the coordinates file into chunks based on the specified chunk size and gene dictionary.
 
     :param coordinates_file: DataFrame containing the coordinates data
     :param gene_dict: Dictionary containing gene information with genomic locations
-    :param chunk_size: Size of each chunk in base pairs. Default is 30 (interpreted as 30Mb)
+    :param chunk_size: Size of each chunk in base pairs. Default is 3 (interpreted as 3Mb)
     :return: DataFrame with the coordinates split into chunks
     """
 
     # read in the gene dictionary
-    if gene_dict == Path:
+    if isinstance(gene_dict, Path):
         with open(gene_dict, 'r') as f:
             gene_dict = json.load(f)
 
-    # first, if we are using a 30Mb chunk then we need to convert it to Mb
-    if chunk_size == 30:
-        print("Creating 30Mb chunks for bgens")
-        # convert chunk size to mega base
+    # first, if we are using a 3Mb chunk then we need to convert it to Mb
+    if chunk_size == 3:
+        print("Creating 3Mb chunks for bgens")
         chunk_size = chunk_size * 1000000
-    # if we are not (for testing purposes, I imagine) then use that instead
     else:
         print(f"Using a custom chunk size of {chunk_size}")
 
@@ -70,61 +83,44 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
 
     # we want to do this separately for each chromosome
     for chrom in sorted(coordinates_file['chrom'].unique(), key=lambda x: int(x.replace('chr', ''))):
-        # get the chromosome data that we are working on
         chrom_df = coordinates_file[coordinates_file['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
-        # also subset the gene data to get the working chromosome
         chrom_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
 
-        # if both are empty then something is wrong
         if chrom_df.empty or chrom_genes.empty:
-            # throw an error
             raise ValueError("Chromosome data or gene data is empty for chromosome: " + chrom)
 
-        # work out the very start of the chromosome
         current_start = chrom_df['start'].min()
-        # this will be our first chunk
-        chunk_number = 1
-        # also work out the end of the chromosome
         chrom_max_end = chrom_df['end'].max()
+        chunk_number = 1
 
-        # while loop ensures that we stay within the chromosome boundary
-        while current_start < chrom_max_end:
-            # add our chunk to the current position
-            position_to_check = current_start + chunk_size
+        while current_start <= chrom_max_end:
+            # proposed end of chunk is current start + chunk size
+            proposed_end = current_start + chunk_size
 
-            # check if within gene
-            gene_context = find_gene_context(chrom, position_to_check, gene_df)
+            # chunk logic 1: adjust chunk to avoid ending inside a gene
+            gene_context = find_gene_context(chrom, proposed_end, gene_df)
 
-            # if it's not within a gene, then we can cut the chunk here
             if gene_context['status'] != 'within':
-                # fallback: use chunk_size increment ensuring it's smaller than the
-                # end of the chromosome
-                current_end = min(current_start + chunk_size, chrom_max_end)
+                current_end = min(proposed_end, chrom_max_end)
             else:
-                # if we are within a gene, then let's get that gene
                 gene_name = gene_context['genes'][0]
-                # then let's find a space downstream between this gene and the
-                # next gene - directly in-between the two genes
                 downstream = find_position_after_within_gene(chrom, gene_name, gene_df)
-                # if there is no such gene (shouldn't happen until we run out of genes)
-                # then use the chromosome end position as the end
                 if downstream is None:
                     current_end = chrom_max_end
-                # otherwise, let's use this new in-between position as the end of our chunk
                 else:
-                    current_end = min(current_start + chunk_size, chrom_max_end)
+                    current_end = min(downstream['between_position'], chrom_max_end)
 
-                    # Extend chunk to include the full region of overlapping files
-                    overlapping_at_boundary = chrom_df[
-                        (chrom_df['start'] <= current_end) & (chrom_df['end'] > current_end)
-                        ]
-                    if not overlapping_at_boundary.empty:
-                        current_end = overlapping_at_boundary['end'].max()
+            # chunk logic 2: adjust chunk to avoid splitting across a file
+            overlapping_at_boundary = chrom_df[
+                (chrom_df['start'] <= current_end) & (chrom_df['end'] > current_end)
+                ]
+            if not overlapping_at_boundary.empty:
+                current_end = overlapping_at_boundary['end'].max()
 
-            # Find all rows in coordinates_file that overlap with this chunk
+            # find all rows in coordinates_file that overlap with this chunk
             overlapping_rows = chrom_df[(chrom_df['end'] >= current_start) & (chrom_df['start'] <= current_end)]
 
-            # For each overlapping row, create a new entry with this chunk label
+            # for each overlapping row, create a new entry with this chunk label
             for index, overlap_row in overlapping_rows.iterrows():
                 chunks.append({
                     'chrom': f"{chrom}_chunk{chunk_number}",
@@ -139,8 +135,12 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
                     'output_vep_idx': overlap_row['output_vep_idx']
                 })
 
-            # move to next chunk
-            current_start = current_end + 1
+            # move to next chunk at start of next file
+            next_files = chrom_df[chrom_df['start'] > current_end]
+            if not next_files.empty:
+                current_start = next_files['start'].min()
+            else:
+                break
             chunk_number += 1
 
     # make a new dataframe with the new chunks

@@ -1,3 +1,0 @@
-	chrom	start	end	chunk_start	chunk_end	vcf_prefix	output_bcf	output_bcf_idx	output_vep	output_vep_idx
-0	chr7_chunk1	36432507	36442739	36432507	66432507	test_input2	test_input2.vcf.filtered.bcf	test_input2.vcf.filtered.bcf.csi	test_input2.vcf.vep.tsv.gz	test_input2.vcf.vep.tsv.gz.tbi
-1	chr7_chunk3	100679512	100694238	96432509	100694238	test_input1	test_input1.vcf.filtered.bcf	test_input1.vcf.filtered.bcf.csi	test_input1.vcf.vep.tsv.gz	test_input1.vcf.vep.tsv.gz.tbi

@@ -9,35 +9,21 @@
 import csv
 
 import dxpy
-<<<<<<< HEAD
-from general_utilities.association_resources import (
-    generate_linked_dx_file,
-    download_dxfile_by_name,
-    check_gzipped
-)
-from general_utilities.job_management.thread_utility import ThreadUtility
-from general_utilities.mrc_logger import MRCLogger
-
-from makebgen.process_bgen.helper import run_splitter
-=======
 from general_utilities.association_resources import check_gzipped
 from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
->>>>>>> v2.0.0
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
+from makebgen.process_bgen.helper import run_splitter
+from test.test_helper import gene_dict
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
-<<<<<<< HEAD
-def main(output_prefix: str, coordinate_file: dict, make_bcf: bool, gene_dict_file: dict, chunk_size: int = 30) -> dict:
-=======
-def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
->>>>>>> v2.0.0
+def main(output_prefix: str, coordinate_file: str, make_bcf: bool, chunking: int, gene_dict: str) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -48,26 +34,25 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
     :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
-    :param gene_dict_file: A dictionary with all genes and their positions
-    :param chunk_size: What rough chunk size to make the BGENs (for WGS); default is 30Mb
-
+    :param chunking: If chunking is requested, this is the size of the chunks to be created.
+    :param gene_dict: A dictionary containing the gene position information needed for chunking.
     :return: An output dictionary following DNANexus conventions.
     """
 
     # Get the processed coordinate file
     total_bcf = 0
-<<<<<<< HEAD
-    coordinate_path = download_dxfile_by_name(coordinate_file)
-    gene_dict = download_dxfile_by_name(gene_dict_file)
-
-    # change the input coordinates so that we make BGENs according to 30Mb chunks
-    run_splitter(coordinate_path, gene_dict, chunk_size)
-=======
 
     # start the file parser class and get the coordinates file
     coordinates = InputFileHandler(coordinate_file)
     coordinate_path = coordinates.get_file_handle()
->>>>>>> v2.0.0
+
+    if chunking:
+        # If chunking is requested, we need to split the coordinate file into chunks
+        chunked_coordinates = run_splitter(coordinate_path=coordinate_path,
+                                           gene_dict=gene_dict,
+                                           chunk_size=chunking)
+        # replace the coordinate_path with the chunked coordinates
+        coordinate_path = chunked_coordinates
 
     with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")

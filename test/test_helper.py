@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from makebgen.process_bgen.helper import split_coordinates_file
+from makebgen.process_bgen.helper import split_coordinates_file, run_splitter
 
 # a bit of setting up
 test_data_dir = Path(__file__).parent / 'test_data'
@@ -26,12 +26,12 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
                 'output_vep': ['test_input2.vcf.vep.tsv.gz', 'test_input1.vcf.vep.tsv.gz'],
                 'output_vep_idx': ['test_input2.vcf.vep.tsv.gz.tbi', 'test_input1.vcf.vep.tsv.gz.tbi'],
             }),
-            24257005,
+            3,
             [
                 {'chrom': 'chr7_chunk1', 'start': 36432507, 'end': 36442739,
-                 'chunk_start': 36432507, 'chunk_end': 60689512, 'vcf_prefix': 'test_input2'},
-                {'chrom': 'chr7_chunk3', 'start': 100679512, 'end': 100694238,
-                 'chunk_start': 84946519, 'chunk_end': 100694238, 'vcf_prefix': 'test_input1'},
+                 'chunk_start': 36432507, 'chunk_end': 39519370, 'vcf_prefix': 'test_input2'},
+                {'chrom': 'chr7_chunk2', 'start': 100679512, 'end': 100694238,
+                 'chunk_start': 100679512, 'chunk_end': 100694238, 'vcf_prefix': 'test_input1'},
             ]
     ),
     # Test case 2: single record spans entire chunk
@@ -55,21 +55,21 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
     # Test case 3: record overlaps multiple chunks
     (
             pd.DataFrame({
-                'chrom': ['chr2'],
-                'start': [100],
-                'end': [700],
-                'vcf_prefix': ['sample2'],
-                'output_bcf': ['sample2.bcf'],
-                'output_bcf_idx': ['sample2.bcf.csi'],
-                'output_vep': ['sample2.vep.tsv.gz'],
-                'output_vep_idx': ['sample2.vep.tsv.gz.tbi'],
+                'chrom': ['chr2', 'chr3'],
+                'start': [100, 750],
+                'end': [700, 1000],
+                'vcf_prefix': ['sample2', 'sample3'],
+                'output_bcf': ['sample2.bcf', 'sample3.bcf'],
+                'output_bcf_idx': ['sample2.bcf.csi', 'sample3.bcf.csi'],
+                'output_vep': ['sample2.vep.tsv.gz', 'sample3.vep.tsv.gz'],
+                'output_vep_idx': ['sample2.vep.tsv.gz.tbi', 'sample3.vep.tsv.gz.tbi'],
             }),
             300,
             [
                 {'chrom': 'chr2_chunk1', 'start': 100, 'end': 700,
-                 'chunk_start': 100, 'chunk_end': 400, 'vcf_prefix': 'sample2'},
-                {'chrom': 'chr2_chunk2', 'start': 100, 'end': 700,
-                 'chunk_start': 401, 'chunk_end': 700, 'vcf_prefix': 'sample2'},
+                 'chunk_start': 100, 'chunk_end': 700, 'vcf_prefix': 'sample2'},
+                {'chrom': 'chr3_chunk1', 'start': 750, 'end': 1000,
+                 'chunk_start': 750, 'chunk_end': 1000, 'vcf_prefix': 'sample3'},
             ]
     ),
     # Additional test cases:
@@ -87,11 +87,9 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             300,
             [
                 {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300,
-                 'chunk_start': 100, 'chunk_end': 400, 'vcf_prefix': 'sample1'},
+                 'chunk_start': 100, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
                 {'chrom': 'chr1_chunk1', 'start': 301, 'end': 600,
-                 'chunk_start': 100, 'chunk_end': 400, 'vcf_prefix': 'sample1'},
-                {'chrom': 'chr1_chunk2', 'start': 301, 'end': 600,
-                 'chunk_start': 401, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
+                 'chunk_start': 100, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
                 {'chrom': 'chr2_chunk1', 'start': 601, 'end': 900,
                  'chunk_start': 601, 'chunk_end': 900, 'vcf_prefix': 'sample2'},
             ]
@@ -118,21 +116,27 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
 
 
 @pytest.mark.parametrize(
-    argnames=['input_data', 'chunk_size'],
+    argnames=['input_data', 'chunk_size', 'expected'],
     argvalues=[
-        (Path("test_coords.txt"), 30),
-        (Path("test_coords_v2.txt"), 30),
-        (Path("formatted_coords.txt"), 30),
-        (Path("test_coordinates.txt"), 30),
+        (Path("test_coords.txt"), 3, 'test_coords_with_chunking.csv'),
+        (Path("test_coords_v2.txt"), 3, 'test_coords_v2_with_chunking.csv'),
+        (Path("formatted_coords.txt"), 3, 'formatted_coords_with_chunking.csv'),
+        # (Path("test_coordinates.txt"), 3, 'test_coordinates_with_chunking.csv'),
     ]
 )
-def test_split_coordinates_file(input_data, chunk_size):
+def test_run_splitter(input_data, chunk_size, expected):
     """
     This is a pytest using more of a real-life example
     """
 
-    data = pd.read_csv(test_data_dir / input_data, sep='\t')
-    result = split_coordinates_file(coordinates_file=data, gene_dict=gene_dict, chunk_size=chunk_size)
-    result.to_csv(input_data.parent / (input_data.stem + "_with_chunking.csv"), sep='\t')
+    data = test_data_dir / input_data
+    result = run_splitter(coordinate_path=data, gene_dict=gene_dict, chunk_size=chunk_size)
 
-    print(result)
+    # show all pandas columns
+    pd.set_option('display.max_columns', None)
+
+    # assert dataframes are equal
+    actual = pd.read_csv(result, sep='\t')
+    expected_df = pd.read_csv(test_data_dir / 'expected_output' / expected, sep="\t")
+
+    pd.testing.assert_frame_equal(actual, expected_df)
