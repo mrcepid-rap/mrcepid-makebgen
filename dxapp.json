@@ -25,27 +25,6 @@
       "class": "boolean",
       "default": false,
       "help": "Make a concatenated BCF in addition to bgen. WARNING: This can lead to very long runtimes if enabled and is intended for testing only."
-    },
-    {
-      "name": "chunking",
-      "label": "Use chunking for making BGEN files?",
-      "class": "int",
-      "optional": true,
-      "default": 3,
-      "help": "If chunking, set a chunk size (in Mb). Default is 3Mb chunks"
-    },
-    {
-      "name": "gene_dict",
-      "label": "Gene dictionary needed to perform chunking (contains gene coordinates)",
-      "class": "file",
-      "optional": true,
-      "default": {
-        "$dnanexus_link": {
-          "project": "project-GbZqJpQJ9bvfF97z25B9Gkjv",
-          "id": "file-GzXX52jJ9bvyPk600kKyQKQk"
-        }
-      },
-      "help": "A dictionary that's needed to perform chunking. This contains the gene coordinates. If chunking is not used, this file is not needed."
     }
   ],
   "outputSpec": [

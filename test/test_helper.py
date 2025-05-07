@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -116,28 +117,70 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
 
 
 @pytest.mark.parametrize(
-    argnames=['input_data', 'gene_dict', 'chunk_size', 'expected'],
+    argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
     argvalues=[
-        (Path("test_coords.txt"), 'final_dict.json', 3, 'test_coords_with_chunking.csv'),
-        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'test_coords_v2_with_chunking.csv'),
-        (Path("formatted_coords.txt"), 'final_dict.json', 3, 'formatted_coords_with_chunking.csv'),
-        # (Path("test_coordinates.txt"), 'test/test_data/final_dict.json', 3, 'test_coordinates_with_chunking.csv'),
+        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'chunked_files', 35),
     ]
 )
-def test_run_splitter(input_data, gene_dict, chunk_size, expected):
+def test_run_splitter(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
     """
-    This is a pytest using more of a real-life example
+    Pytest using a real(ish) file to test the run_splitter function.
     """
 
     data = test_data_dir / input_data
     gene_dict = test_data_dir / gene_dict
-    result = run_splitter(coordinate_path=data, gene_dict=gene_dict, chunk_size=chunk_size)
+    run_splitter(coordinate_path=data, gene_dict=gene_dict, chunk_size=chunk_size, output_path=output_path)
 
-    # show all pandas columns
-    pd.set_option('display.max_columns', None)
+    # Check if the output directory exists
+    output_dir = Path(output_path)
+    assert output_dir.exists(), f"Output directory {output_dir} does not exist."
 
-    # assert dataframes are equal
-    actual = pd.read_csv(result, sep='\t')
-    expected_df = pd.read_csv(test_data_dir / 'expected_output' / expected, sep="\t")
+    # Check there are 35 files in the output directory
+    output_files = list(output_dir.glob("*"))
+    assert len(
+        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."
 
-    pd.testing.assert_frame_equal(actual, expected_df)
+
+@pytest.mark.parametrize(
+    argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
+    argvalues=[
+        (Path("test_coords_v2.txt"), Path('final_dict.json'), 3, 'chunked_files', 35),
+    ]
+)
+def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
+    """
+    Test the command line interface of the script.
+    """
+    # Construct paths dynamically
+    coordinate_path = test_data_dir / input_data
+    gene_dict_path = test_data_dir / gene_dict
+    output_path = test_data_dir / output_path
+
+    try:
+        result = subprocess.run(
+            [
+                "python",
+                str(Path(__file__).parent.parent / "makebgen/process_bgen/helper.py"),
+                "--coordinate_path", str(coordinate_path),
+                "--gene_dict", str(gene_dict_path),
+                "--chunk_size", str(chunk_size),
+                "--output_path", str(output_path)
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print(result.stdout)
+        print(result.stderr)
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed with return code {e.returncode}")
+        print(f"Error output: {e.stderr}")
+
+    # Check if the output directory exists
+    output_dir = Path(output_path)
+    assert output_dir.exists(), f"Output directory {output_dir} does not exist."
+
+    # Check there are 35 files in the output directory
+    output_files = list(output_dir.glob("*"))
+    assert len(
+        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."

@@ -16,13 +16,12 @@ from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
-from makebgen.process_bgen.helper import run_splitter
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
-def main(output_prefix: str, coordinate_file: str, make_bcf: bool, chunking: int, gene_dict: str) -> dict:
+def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -33,8 +32,6 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, chunking: int
     :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
-    :param chunking: If chunking is requested, this is the size of the chunks to be created.
-    :param gene_dict: A dictionary containing the gene position information needed for chunking.
     :return: An output dictionary following DNANexus conventions.
     """
 
@@ -44,14 +41,6 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, chunking: int
     # start the file parser class and get the coordinates file
     coordinates = InputFileHandler(coordinate_file)
     coordinate_path = coordinates.get_file_handle()
-
-    if chunking:
-        # If chunking is requested, we need to split the coordinate file into chunks
-        chunked_coordinates = run_splitter(coordinate_path=coordinate_path,
-                                           gene_dict=gene_dict,
-                                           chunk_size=chunking)
-        # replace the coordinate_path with the chunked coordinates
-        coordinate_path = chunked_coordinates
 
     with check_gzipped(coordinate_path) as coord_file:
         coord_file_reader = csv.DictReader(coord_file, delimiter="\t")

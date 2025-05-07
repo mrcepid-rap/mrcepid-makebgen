@@ -1,0 +1,2 @@
+chrom	start	end	chunk_start	chunk_end	vcf_prefix	output_bcf	output_bcf_idx	output_vep	output_vep_idx
+chr7_chunk7	37995769	38895068	37995769	40995769	ukb24310_c7_b2159_v1.chunk12	file-11	file-39	file-67	file-95

@@ -26,3 +26,4 @@ test/.coverage
 test/test_data/test_coordinates.txt
 test/test_data/expected_output/test_coordinates_with_chunking.csv
 test/final_dict.json
+test/test_coords_v2.txt

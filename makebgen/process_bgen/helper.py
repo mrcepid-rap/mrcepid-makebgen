@@ -1,14 +1,26 @@
 """
 This script is designed to help with the processing of bgen files for WGS data.
 """
+import argparse
 import json
 from pathlib import Path
 from typing import Union
-from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
+
 import pandas as pd
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 
 
-def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path, str], chunk_size: int = 3):
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Process bgen files for WGS data.")
+    parser.add_argument("--coordinate_path", type=str, required=True, help="Path to the coordinate file.")
+    parser.add_argument("--gene_dict", type=str, required=True, help="Path to the gene dictionary file.")
+    parser.add_argument("--chunk_size", type=int, default=3, required=False, help="Chunk size in Mb (default: 3Mb).")
+    parser.add_argument("--output_path", type=str, default="chunked_files", required=False, help="Path to the output directory (default: 'chunked_files').")
+    return parser.parse_args()
+
+
+def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path, str], chunk_size: int,
+                 output_path: Path) -> None:
     """
     Run the splitter.
 
@@ -25,9 +37,11 @@ def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path, str], chu
     :param coordinate_path: file with the original coordinates
     :param gene_dict: dictionary object with gene positions
     :param chunk_size: size chunk for chunking
+    :param output_path: path to the output file
     """
 
     # read in the original file
+    coordinate_path = InputFileHandler(coordinate_path).get_file_handle()
     original_file = pd.read_csv(coordinate_path, sep='\t')
     # read in the gene dictionary
     gene_dict = InputFileHandler(gene_dict).get_file_handle()
@@ -35,12 +49,31 @@ def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path, str], chu
         gene_dict = json.load(f)
     # do the splitting
     modified_file = split_coordinates_file(original_file, gene_dict, chunk_size)
-    # output the coordinate file with chunking
-    # create output path
-    output_path = coordinate_path.parent / f"{coordinate_path.stem}_with_chunking.csv"
-    modified_file.to_csv(output_path, sep='\t')
-    # return the modified file
-    return output_path
+    # output the chunks to separate files into a directory
+    # create a new directory for the chunked files
+    output_path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    output_chunked_file(chunked_file=modified_file, outout_dir=output_path)
+    # print the output path
+    print(f"Chunked file saved to: {output_path}")
+
+def output_chunked_file(chunked_file: pd.DataFrame, outout_dir: Path) -> None:
+    """
+    Outputs the chunked file to separate CSV files, one for each unique chromosome.
+
+    :param chunked_file: DataFrame containing the chunked coordinates.
+    :param outout_dir: Directory to save the chunked files.
+    :return: None
+    """
+    # select unique values in the 'chrom' column
+    unique_chroms = chunked_file['chrom'].unique()
+    # create a new DataFrame to store the chunked coordinates for each unique_chrom
+    for chrom in unique_chroms:
+        chrom_df = chunked_file[chunked_file['chrom'] == chrom].reset_index(drop=True)
+        # name the new output file
+        output_file = f"{chrom}.csv"
+        # write the new DataFrame to a file with the header
+        chrom_df.to_csv(outout_dir / output_file, sep='\t', index=False, header=True)
 
 
 def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict, Path],
@@ -260,7 +293,16 @@ def sort_coordinates_by_position(df: pd.DataFrame) -> pd.DataFrame:
     """
     Simple function to sort a dataframe based on chromosome number and start position
     """
-    print(df['chrom'])
 
     df['chrom_num'] = df['chrom'].replace('chr', '')
     return df.sort_values(by=['chrom_num', 'start']).drop(columns='chrom_num')
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    run_splitter(
+        coordinate_path=Path(args.coordinate_path),
+        gene_dict=Path(args.gene_dict),
+        chunk_size=args.chunk_size,
+        output_path=Path(args.output_path)
+    )
