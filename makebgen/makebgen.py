@@ -17,7 +17,6 @@ from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 from makebgen.process_bgen.helper import run_splitter
-from test.test_helper import gene_dict
 
 LOGGER = MRCLogger().get_logger()
 
