@@ -10,7 +10,7 @@ from makebgen.process_bgen.helper import split_coordinates_file, run_splitter
 test_data_dir = Path(__file__).parent / 'test_data'
 input_file = test_data_dir / 'test_coords_v2.txt'
 with open(test_data_dir / 'final_dict.json', 'r') as f:
-    gene_dict = json.load(f)
+    gene_dict_local = json.load(f)
 
 
 @pytest.mark.parametrize("input_data, chunk_size, expected", [
@@ -101,7 +101,7 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
     """
 
     # run the function
-    result = split_coordinates_file(coordinates_file=input_data, gene_dict=gene_dict, chunk_size=chunk_size)
+    result = split_coordinates_file(coordinates_file=input_data, gene_dict=gene_dict_local, chunk_size=chunk_size)
 
     # just for display purposes, so we can see the whole df
     pd.set_option('display.max_columns', None)
@@ -116,20 +116,21 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
 
 
 @pytest.mark.parametrize(
-    argnames=['input_data', 'chunk_size', 'expected'],
+    argnames=['input_data', 'gene_dict', 'chunk_size', 'expected'],
     argvalues=[
-        (Path("test_coords.txt"), 3, 'test_coords_with_chunking.csv'),
-        (Path("test_coords_v2.txt"), 3, 'test_coords_v2_with_chunking.csv'),
-        (Path("formatted_coords.txt"), 3, 'formatted_coords_with_chunking.csv'),
-        # (Path("test_coordinates.txt"), 3, 'test_coordinates_with_chunking.csv'),
+        (Path("test_coords.txt"), 'final_dict.json', 3, 'test_coords_with_chunking.csv'),
+        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'test_coords_v2_with_chunking.csv'),
+        (Path("formatted_coords.txt"), 'final_dict.json', 3, 'formatted_coords_with_chunking.csv'),
+        # (Path("test_coordinates.txt"), 'test/test_data/final_dict.json', 3, 'test_coordinates_with_chunking.csv'),
     ]
 )
-def test_run_splitter(input_data, chunk_size, expected):
+def test_run_splitter(input_data, gene_dict, chunk_size, expected):
     """
     This is a pytest using more of a real-life example
     """
 
     data = test_data_dir / input_data
+    gene_dict = test_data_dir / gene_dict
     result = run_splitter(coordinate_path=data, gene_dict=gene_dict, chunk_size=chunk_size)
 
     # show all pandas columns

@@ -4,7 +4,7 @@ This script is designed to help with the processing of bgen files for WGS data.
 import json
 from pathlib import Path
 from typing import Union
-
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 import pandas as pd
 
 
@@ -29,6 +29,10 @@ def run_splitter(coordinate_path: [Path], gene_dict: Union[dict, Path, str], chu
 
     # read in the original file
     original_file = pd.read_csv(coordinate_path, sep='\t')
+    # read in the gene dictionary
+    gene_dict = InputFileHandler(gene_dict).get_file_handle()
+    with open(gene_dict, 'r') as f:
+        gene_dict = json.load(f)
     # do the splitting
     modified_file = split_coordinates_file(original_file, gene_dict, chunk_size)
     # output the coordinate file with chunking
@@ -49,11 +53,6 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
     :param chunk_size: Size of each chunk in base pairs. Default is 3 (interpreted as 3Mb)
     :return: DataFrame with the coordinates split into chunks
     """
-
-    # read in the gene dictionary
-    if isinstance(gene_dict, Path):
-        with open(gene_dict, 'r') as f:
-            gene_dict = json.load(f)
 
     # first, if we are using a 3Mb chunk then we need to convert it to Mb
     if chunk_size == 3:
