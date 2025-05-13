@@ -142,17 +142,17 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, formatted_coords_file
             )
             previous_vep_id = row['output_vep']
 
-        assert filecmp.cmp('test_input1.bgen',
+        assert filecmp.cmp('test_input1.chunk1.bgen',
                            test_data_dir / 'expected_output/test_input1.bgen',
                            shallow=False)
-        assert filecmp.cmp('test_input2.bgen',
+        assert filecmp.cmp('test_input2.chunk2.bgen',
                            test_data_dir / 'expected_output/test_input2.bgen',
                            shallow=False)
 
-    pipeline_data['test_input1.sample'] = temporary_path / 'test_input1.sample'
-    pipeline_data['test_input2.sample'] = temporary_path / 'test_input2.sample'
-    pipeline_data['test_input1.bgen'] = temporary_path / 'test_input1.bgen'
-    pipeline_data['test_input2.bgen'] = temporary_path / 'test_input2.bgen'
+    pipeline_data['test_input1.sample'] = temporary_path / 'test_input1.chunk1.sample'
+    pipeline_data['test_input2.sample'] = temporary_path / 'test_input2.chunk2.sample'
+    pipeline_data['test_input1.bgen'] = temporary_path / 'test_input1.chunk1.bgen'
+    pipeline_data['test_input2.bgen'] = temporary_path / 'test_input2.chunk2.bgen'
 
 
 @pytest.mark.parametrize(
@@ -193,8 +193,8 @@ def test_correct_sample_file(temporary_path: Path, pipeline_data: dict, sample_k
 @pytest.mark.parametrize(
     "bgen_prefixes, output_prefix, make_bcf",
     [
-        ({ 'test_input1': 100679512,
-           'test_input2': 36432507},
+        ({ 'test_input1.chunk1': 100679512,
+           'test_input2.chunk2': 36432507},
          'test_bgen',
          False)
     ]

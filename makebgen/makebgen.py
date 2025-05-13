@@ -56,8 +56,8 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
                                       vep_id=row['output_vep'],
                                       previous_vep_id=previous_vep_id,
                                       start=row['start'],
-                                      make_bcf=make_bcf,
-                                      input_coordinates=coordinates)
+                                      make_bcf=make_bcf
+                                      )
             previous_vep_id = row['output_vep']
 
         # And gather the resulting futures which are returns of all bgens we need to concatenate:

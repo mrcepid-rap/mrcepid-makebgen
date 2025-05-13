@@ -224,17 +224,17 @@ def test_build_query_string(temporary_path, removed_df, expected_query):
     [
         (
                 '(POS=100679512 && REF="A" && ALT="C")',
-                Path("test_data/test_input1.vcf.gz"),
-                Path('test_input1.vcf.filtered'),
-                Path('test_data/test_input1.vcf.filtered.bcf'),
+                Path("test_data/test_input1.chunk1.vcf.gz"),
+                Path('test_input1.chunk1.vcf.filtered'),
+                Path('test_data/test_input1.chunk1.vcf.filtered.bcf'),
                 pd.DataFrame({'POS': [100679512], 'REF': ['A'], 'ALT': ['C']}),
                 False
         ),
         (
                 '(POS=36432507 && REF="C" && ALT="T")',
-                Path("test_data/test_input2.vcf.gz"),
-                Path('test_input2.vcf.filtered'),
-                Path('test_data/test_input2.vcf.filtered.bcf'),
+                Path("test_data/test_input2.chunk2.vcf.gz"),
+                Path('test_input2.chunk2.vcf.filtered'),
+                Path('test_data/test_input2.chunk2.vcf.filtered.bcf'),
                 pd.DataFrame({'POS': [36432507], 'REF': ['C'], 'ALT': ['T']}),
                 False
         ),
