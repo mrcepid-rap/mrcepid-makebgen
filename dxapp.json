@@ -122,7 +122,7 @@
         "name": "makebgen",
         "package_manager": "git",
         "url": "https://github.com/mrcepid-rap/mrcepid-makebgen.git",
-        "tag": "v2.0.0",
+        "tag": "feature/HG-493-write-a-script-which-generates-input-chunks-for-makebgen",
         "build_commands": "uv pip install --system ."
       }
     ]
