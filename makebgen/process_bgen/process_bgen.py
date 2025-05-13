@@ -37,6 +37,7 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
 
     # download the file
     vcf_path = InputFileHandler(vcf_id).get_file_handle()
+    vep_id
 
     # Set names and DXPY files for bcf/vep file
     # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
