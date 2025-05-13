@@ -36,7 +36,7 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
     # try and convert this function to work with pysam & bgen modules if possible
 
     # download the file
-    vcf_path = vcf_id
+    vcf_path = InputFileHandler(vcf_id).get_file_handle()
 
     # Set names and DXPY files for bcf/vep file
     # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
@@ -47,7 +47,7 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
 
     # And convert processed bcf into bgenv1.2
     cmd = f'plink2 --threads 2 --memory 10000 ' \
-          f'--bcf /test/{vcf_path} ' \
+          f'--bcf /test/{vcf_path.name} ' \
           f'--export bgen-1.2 \'bits=\'8 \'ref-first\' ' \
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
