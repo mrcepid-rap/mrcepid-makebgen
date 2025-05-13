@@ -58,7 +58,7 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
     cmd_exec.run_cmd_on_docker(cmd)
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
-    # Note, for now let's only do this if we are running on DNA Nexus
+    # Note, for now let's only do this if we are working on a VM (i.e. not locally)
     if InputFileHandler(vcf_id).get_file_type() != FileType.LOCAL_PATH:
 
         if not make_bcf:
