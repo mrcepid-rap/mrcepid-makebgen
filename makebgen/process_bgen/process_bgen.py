@@ -15,7 +15,6 @@ CMD_EXEC = build_default_command_executor()
 
 
 def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
-                       input_coordinates=InputFileHandler,
                        cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
@@ -27,7 +26,6 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param start: Start coordinate for this chunk
     :param make_bcf: Is a bcf being made for this chromosome?
-    :param input_coordinates: InputFileHandler object containing the coordinates filepath
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
@@ -40,7 +38,10 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
 
     # Set names and DXPY files for bcf/vep file
     # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
-    vcf_prefix = replace_multi_suffix(vcf_path.with_suffix(''), vcf_path.suffixes[0]).stem
+    # Extract this part
+    suffix_from_name = "." + vcf_path.name.split(".")[1]  # e.g., '.chunk1'
+    # Apply the function
+    vcf_prefix = replace_multi_suffix(vcf_path, suffix_from_name).name
 
     # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
     deduplicate_variants(vep_id=vep_id, previous_vep_id=previous_vep_id, vcf_prefix=vcf_prefix, vcf_path=vcf_path)

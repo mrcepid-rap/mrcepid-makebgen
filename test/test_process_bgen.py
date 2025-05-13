@@ -138,8 +138,7 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, formatted_coords_file
                 previous_vep_id=previous_vep_id,
                 start=row['start'],
                 make_bcf=make_bcf,
-                input_coordinates=input_coords,
-                cmd_exec=cmd_exec,
+                cmd_exec=cmd_exec
             )
             previous_vep_id = row['output_vep']
 
