@@ -4,6 +4,7 @@ from typing import Dict
 
 import dxpy
 from general_utilities.association_resources import replace_multi_suffix, bgzip_and_tabix
+from general_utilities.import_utils.file_handlers.input_file_handler import FileType
 from general_utilities.import_utils.import_lib import InputFileHandler
 from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
 
@@ -58,7 +59,7 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
     # Note, for now let's only do this if we are running on DNA Nexus
-    if isinstance(InputFileHandler(vcf_id).get_file_type(), dxpy.DXFile):
+    if InputFileHandler(vcf_id).get_file_type() != FileType.LOCAL_PATH:
 
         if not make_bcf:
             vcf_path.unlink()
