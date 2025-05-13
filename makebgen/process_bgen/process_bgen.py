@@ -57,7 +57,7 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
     # Note, for now let's only do this if we are running on DNA Nexus
-    if isinstance(input_coordinates.get_file_type(), dxpy.DXFile):
+    if isinstance(InputFileHandler(vcf_id).get_file_type(), dxpy.DXFile):
 
         if not make_bcf:
             vcf_path.unlink()
