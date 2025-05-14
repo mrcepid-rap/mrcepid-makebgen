@@ -145,7 +145,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     # (i.e. ['test_input2', 'test_input1'])
     sorted_bgen_prefixes = [item[0] for item in sorted(
         bgen_prefixes.items(),
-        key=lambda item: item[1]
+        key=lambda item: int(item[1])
     )]
 
     # Create a correct sample file:
