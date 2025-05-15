@@ -236,7 +236,7 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path, vcf_path: Path,
     """
     print(vcf_path)
 
-    cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_path}'
+    cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_path.name}'
     cmd_exec.run_cmd_on_docker(cmd)
 
     # And rename the deduped bcf to match the final one we want to output
