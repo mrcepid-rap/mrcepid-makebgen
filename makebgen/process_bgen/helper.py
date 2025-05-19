@@ -71,7 +71,7 @@ def output_chunked_file(chunked_file: pd.DataFrame, outout_dir: Path) -> None:
     for chrom in unique_chroms:
         chrom_df = chunked_file[chunked_file['chrom'] == chrom].reset_index(drop=True)
         # name the new output file
-        output_file = f"{chrom}.csv"
+        output_file = f"{chrom}.txt"
         # write the new DataFrame to a file with the header
         chrom_df.to_csv(outout_dir / output_file, sep='\t', index=False, header=True)
 
@@ -87,17 +87,14 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
     :return: DataFrame with the coordinates split into chunks
     """
 
-    # first, if we are using a 3Mb chunk then we need to convert it to Mb
     if chunk_size == 3:
-        print("Creating 3Mb chunks for bgens")
+        print(f"Creating {chunk_size}Mb chunks for bgens")
         chunk_size = chunk_size * 1000000
     else:
         print(f"Using a custom chunk size of {chunk_size}")
 
-    # order by position to make them more readable
     coordinates_file = sort_coordinates_by_position(coordinates_file).reset_index(drop=True)
 
-    # re-arrange our gene dictionary for easy processing
     gene_records = []
     for gene, details in gene_dict.items():
         loc = details['genomic_location']
@@ -110,10 +107,9 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
     gene_df = pd.DataFrame(gene_records)
     gene_df = sort_coordinates_by_position(gene_df).reset_index(drop=True)
 
-    # start the chunking process
     chunks = []
+    log_entries = []
 
-    # we want to do this separately for each chromosome
     for chrom in sorted(coordinates_file['chrom'].unique(), key=lambda x: int(x.replace('chr', ''))):
         chrom_df = coordinates_file[coordinates_file['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
         chrom_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
@@ -124,38 +120,99 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
         current_start = chrom_df['start'].min()
         chrom_max_end = chrom_df['end'].max()
         chunk_number = 1
+        sub_chunk_index = 1
+        splitting_logical_chunk = False
+        original_chunk_start = current_start
 
         while current_start <= chrom_max_end:
-            # proposed end of chunk is current start + chunk size
-            proposed_end = current_start + chunk_size
+            log_entry = {
+                'chrom': chrom,
+                'chunk_number': chunk_number,
+                'start': current_start,
+                'proposed_end_in_gene': None,
+                'adjusted_to': 'not_applicable',
+                'file_boundary_adjustment': 'not_applicable',
+                'final_end_in_gene': None,
+                'final_adjusted_to': 'not_applicable',
+                'chunk_end': None,
+                'file_limit_adjustment': 'not_applicable'
+            }
 
-            # chunk logic 1: adjust chunk to avoid ending inside a gene
+            proposed_end = original_chunk_start + chunk_size
             gene_context = find_gene_context(chrom, proposed_end, gene_df)
-
-            if gene_context['status'] != 'within':
-                current_end = min(proposed_end, chrom_max_end)
-            else:
+            if gene_context['status'] == 'within':
                 gene_name = gene_context['genes'][0]
+                log_entry['proposed_end_in_gene'] = gene_name
+                downstream = find_position_after_within_gene(chrom, gene_name, gene_df)
+                if downstream is None:
+                    proposed_end = chrom_max_end
+                    log_entry['adjusted_to'] = 'end_of_chromosome'
+                else:
+                    proposed_end = downstream['between_position']
+                    log_entry['adjusted_to'] = f"between {gene_name} and {downstream['next_gene']}"
+            else:
+                log_entry['proposed_end_in_gene'] = 'not_within_gene'
+
+            overlapping_at_boundary = chrom_df[
+                (chrom_df['start'] <= proposed_end) & (chrom_df['end'] > proposed_end)
+            ]
+            if not overlapping_at_boundary.empty:
+                current_end = overlapping_at_boundary['end'].max()
+                log_entry['file_boundary_adjustment'] = f"moved to {current_end} to avoid file split"
+            else:
+                current_end = proposed_end
+
+            gene_context = find_gene_context(chrom, current_end, gene_df)
+            if gene_context['status'] == 'within':
+                gene_name = gene_context['genes'][0]
+                log_entry['final_end_in_gene'] = gene_name
                 downstream = find_position_after_within_gene(chrom, gene_name, gene_df)
                 if downstream is None:
                     current_end = chrom_max_end
+                    log_entry['final_adjusted_to'] = 'end_of_chromosome'
                 else:
-                    current_end = min(downstream['between_position'], chrom_max_end)
+                    current_end = downstream['between_position']
+                    log_entry['final_adjusted_to'] = f"between {gene_name} and {downstream['next_gene']}"
+            else:
+                log_entry['final_end_in_gene'] = 'not_within_gene'
 
-            # chunk logic 2: adjust chunk to avoid splitting across a file
-            overlapping_at_boundary = chrom_df[
-                (chrom_df['start'] <= current_end) & (chrom_df['end'] > current_end)
-                ]
-            if not overlapping_at_boundary.empty:
-                current_end = overlapping_at_boundary['end'].max()
-
-            # find all rows in coordinates_file that overlap with this chunk
             overlapping_rows = chrom_df[(chrom_df['end'] >= current_start) & (chrom_df['start'] <= current_end)]
 
-            # for each overlapping row, create a new entry with this chunk label
+            needs_split = False
+            if len(overlapping_rows) > 800:
+                needs_split = True
+                splitting_logical_chunk = True
+                limited_rows = overlapping_rows.iloc[:800]
+                current_end = limited_rows['end'].max()
+                log_entry['file_limit_adjustment'] = f"limited to 800 files, adjusted to {current_end}"
+
+                gene_context = find_gene_context(chrom, current_end, gene_df)
+                if gene_context['status'] == 'within':
+                    gene_name = gene_context['genes'][0]
+                    downstream = find_position_after_within_gene(chrom, gene_name, gene_df)
+                    log_entry['final_end_in_gene'] = gene_name
+                    if downstream is None:
+                        current_end = chrom_max_end
+                        log_entry['final_adjusted_to'] = 'end_of_chromosome (after file limit)'
+                    else:
+                        current_end = downstream['between_position']
+                        log_entry['final_adjusted_to'] = f"between {gene_name} and {downstream['next_gene']} (after file limit)"
+                else:
+                    log_entry['final_end_in_gene'] = 'not_within_gene'
+                    log_entry['final_adjusted_to'] = 'not_applicable'
+
+                overlapping_rows = chrom_df[(chrom_df['end'] >= current_start) & (chrom_df['start'] <= current_end)]
+            else:
+                log_entry['file_limit_adjustment'] = 'not_applicable'
+
+            if splitting_logical_chunk:
+                chunk_label = f"{chrom}_chunk{chunk_number}_v{sub_chunk_index}"
+            else:
+                chunk_label = f"{chrom}_chunk{chunk_number}"
+
             for index, overlap_row in overlapping_rows.iterrows():
                 chunks.append({
-                    'chrom': f"{chrom}_chunk{chunk_number}",
+                    'chrom': chunk_label,
                     'start': overlap_row['start'],
                     'end': overlap_row['end'],
                     'chunk_start': current_start,
@@ -167,18 +224,30 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
                     'output_vep_idx': overlap_row['output_vep_idx']
                 })
 
-            # move to next chunk at start of next file
-            next_files = chrom_df[chrom_df['start'] > current_end]
-            if not next_files.empty:
-                current_start = next_files['start'].min()
-            else:
-                break
-            chunk_number += 1
+            log_entry['chunk_end'] = current_end
+            log_entries.append(log_entry)
 
-    # make a new dataframe with the new chunks
+            next_files = chrom_df[chrom_df['start'] > current_end]
+            if needs_split and not next_files.empty:
+                current_start = next_files['start'].min()
+                sub_chunk_index += 1
+            else:
+                if not next_files.empty:
+                    current_start = next_files['start'].min()
+                else:
+                    break
+                chunk_number += 1
+                sub_chunk_index = 1
+                splitting_logical_chunk = False
+                original_chunk_start = current_start
+
     chunk_df = pd.DataFrame(chunks)
+    log_df = pd.DataFrame(log_entries)
+    log_file_path = Path("chunking_log_" + chrom + ".txt")
+    log_df.to_csv(log_file_path, sep='\t', index=False)
 
     return chunk_df
+
 
 
 def find_chunk_for_position(chrom_df: pd.DataFrame, position: int) -> pd.Series:

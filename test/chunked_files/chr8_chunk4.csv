@@ -1,3 +1,0 @@
-chrom	start	end	chunk_start	chunk_end	vcf_prefix	output_bcf	output_bcf_idx	output_vep	output_vep_idx
-chr8_chunk4	111999658	113102576	111999658	116061611	ukb24310_c8_b2159_v1.chunk5	file-104	file-132	file-160	file-188
-chr8_chunk4	114996899	116061611	111999658	116061611	ukb24310_c8_b2159_v1.chunk6	file-105	file-133	file-161	file-189

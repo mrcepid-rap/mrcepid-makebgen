@@ -32,7 +32,7 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
                 {'chrom': 'chr7_chunk1', 'start': 36432507, 'end': 36442739,
                  'chunk_start': 36432507, 'chunk_end': 39519370, 'vcf_prefix': 'test_input2'},
                 {'chrom': 'chr7_chunk2', 'start': 100679512, 'end': 100694238,
-                 'chunk_start': 100679512, 'chunk_end': 100694238, 'vcf_prefix': 'test_input1'},
+                 'chunk_start': 100679512, 'chunk_end': 104057999, 'vcf_prefix': 'test_input1'},
             ]
     ),
     # Test case 2: single record spans entire chunk
@@ -50,7 +50,7 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
             250,
             [
                 {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300,
-                 'chunk_start': 100, 'chunk_end': 300, 'vcf_prefix': 'sample1'},
+                 'chunk_start': 100, 'chunk_end': 350, 'vcf_prefix': 'sample1'},
             ]
     ),
     # Test case 3: record overlaps multiple chunks
@@ -70,7 +70,7 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
                 {'chrom': 'chr2_chunk1', 'start': 100, 'end': 700,
                  'chunk_start': 100, 'chunk_end': 700, 'vcf_prefix': 'sample2'},
                 {'chrom': 'chr3_chunk1', 'start': 750, 'end': 1000,
-                 'chunk_start': 750, 'chunk_end': 1000, 'vcf_prefix': 'sample3'},
+                 'chunk_start': 750, 'chunk_end': 1050, 'vcf_prefix': 'sample3'},
             ]
     ),
     # Additional test cases:
@@ -92,7 +92,7 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
                 {'chrom': 'chr1_chunk1', 'start': 301, 'end': 600,
                  'chunk_start': 100, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
                 {'chrom': 'chr2_chunk1', 'start': 601, 'end': 900,
-                 'chunk_start': 601, 'chunk_end': 900, 'vcf_prefix': 'sample2'},
+                 'chunk_start': 601, 'chunk_end': 901, 'vcf_prefix': 'sample2'},
             ]
     ),
 ])
@@ -119,7 +119,7 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
 @pytest.mark.parametrize(
     argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
     argvalues=[
-        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'chunked_files', 35),
+        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'chunked_files', 70),
     ]
 )
 def test_run_splitter(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
@@ -135,16 +135,17 @@ def test_run_splitter(input_data: Path, gene_dict: Path, chunk_size: int, output
     output_dir = Path(output_path)
     assert output_dir.exists(), f"Output directory {output_dir} does not exist."
 
-    # Check there are 35 files in the output directory
+    # Check there are 70 files in the output directory
     output_files = list(output_dir.glob("*"))
+    print(output_files)
     assert len(
-        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."
+        output_files) == expected_chunks, f"Expected 70 files, but found {len(output_files)} files in {output_dir}."
 
 
 @pytest.mark.parametrize(
     argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
     argvalues=[
-        (Path("test_coords_v2.txt"), Path('final_dict.json'), 3, 'chunked_files', 35),
+        (Path("test_coords_v2.txt"), Path('final_dict.json'), 3, 'chunked_files', 70),
     ]
 )
 def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
@@ -180,7 +181,7 @@ def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output
     output_dir = Path(output_path)
     assert output_dir.exists(), f"Output directory {output_dir} does not exist."
 
-    # Check there are 35 files in the output directory
+    # Check there are 70 files in the output directory
     output_files = list(output_dir.glob("*"))
     assert len(
-        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."
+        output_files) == expected_chunks, f"Expected 70 files, but found {len(output_files)} files in {output_dir}."
