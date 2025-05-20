@@ -179,12 +179,12 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict
             overlapping_rows = chrom_df[(chrom_df['end'] >= current_start) & (chrom_df['start'] <= current_end)]
 
             needs_split = False
-            if len(overlapping_rows) > 800:
+            if len(overlapping_rows) > 750:
                 needs_split = True
                 splitting_logical_chunk = True
-                limited_rows = overlapping_rows.iloc[:800]
+                limited_rows = overlapping_rows.iloc[:750]
                 current_end = limited_rows['end'].max()
-                log_entry['file_limit_adjustment'] = f"limited to 800 files, adjusted to {current_end}"
+                log_entry['file_limit_adjustment'] = f"limited to 750 files, adjusted to {current_end}"
 
                 gene_context = find_gene_context(chrom, current_end, gene_df)
                 if gene_context['status'] == 'within':
