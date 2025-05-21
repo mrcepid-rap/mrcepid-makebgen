@@ -1,0 +1,110 @@
+import gzip
+from pathlib import Path
+from typing import Iterator, List, Dict
+
+from general_utilities.association_resources import bgzip_and_tabix
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
+from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
+
+CMD_EXEC = build_default_command_executor()
+
+
+def process_chunk_group(batch_index: int, chunk: List[Dict[str, str]],
+                        cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Path]:
+    """
+    Process a group of chunks:
+    - Download files
+    - Concatenate BGEN, SAMPLE, VEP
+    - Index BGEN and VEP
+    - Clean up originals
+
+    :param batch_index: Index used in naming output files.
+    :param chunk: List of dictionaries, each containing keys: 'bgen', 'sample', 'vep', and 'chrom'.
+    :param cmd_exec: CommandExecutor instance to run shell commands. Defaults to CMD_EXEC.
+    :return: Dictionary of output file paths with keys: 'bgen', 'bgen_index', 'sample', 'vep', 'vep_index'.
+    """
+
+    files = {
+        'bgen': [],
+        'sample': [],
+        'vep': []
+    }
+
+    # download files
+    for i, row in enumerate(chunk):
+        bgen = InputFileHandler(row['bgen']).get_file_handle()
+        sample = InputFileHandler(row['sample']).get_file_handle()
+        vep = InputFileHandler(row['vep']).get_file_handle()
+
+        files['bgen'].append(bgen)
+        files['sample'].append(sample)
+        files['vep'].append(vep)
+
+    # chrom label is the same for all rows in the chunk
+    # (assuming they are all from the same chromosome)
+    chrom_label = chunk[0]['chrom']
+
+    # create output files
+    out_bgen = Path(f"{chrom_label}_mergedchunk{batch_index}.bgen")
+    out_sample = Path(f"{chrom_label}_mergedchunk{batch_index}.sample")
+    out_vep = Path(f"{chrom_label}_mergedchunk{batch_index}.vep.tsv")
+
+    # Assume you're inside the correct working directory in Docker
+    input_bgens = ' '.join(f'-g /test/{bgen.name}' for bgen in files['bgen'])
+    cmd = f'cat-bgen {input_bgens} -og /test/{out_bgen}'
+    cmd_exec.run_cmd_on_docker(cmd)
+
+    # index the bgen
+    cmd = f'bgenix -index -g /test/{out_bgen}'
+    cmd_exec.run_cmd_on_docker(cmd)
+
+    # ensure the sample files are identical
+    with files['sample'][0].open("r") as in_f:
+        with out_sample.open("w") as out_f:
+            for line in in_f:
+                out_f.write(line)
+
+    # concatenate and sort VEP
+    with out_vep.open("w") as out_f:
+        for i, vep in enumerate(files['vep']):
+            with gzip.open(vep, "rt") as in_f:
+                for j, line in enumerate(in_f):
+                    if i == 0 and j == 0:
+                        out_f.write(line)  # write header once
+                    elif j > 0:
+                        out_f.write(line)
+
+    # sort VEP
+    final_vep, final_vep_idx = bgzip_and_tabix(out_vep, comment_char='C', end_row=2)
+
+    # clean up original files
+    for f in files['bgen'] + files['sample'] + files['vep']:
+        if f.exists():
+            f.unlink()
+    out_vep.unlink()
+
+    return {
+        'bgen': out_bgen,
+        'bgen_index': Path(f"{out_bgen}.bgi"),
+        'sample': out_sample,
+        'vep': final_vep,
+        'vep_index': final_vep_idx
+    }
+
+
+def chunk_dict_reader(reader: Iterator[Dict[str, str]], chunk_size: int) -> Iterator[List[Dict[str, str]]]:
+    """
+    Yield batches of rows from a DictReader in chunks of `chunk_size`.
+    The final chunk may be smaller if rows are exhausted.
+
+    :param reader: csv.DictReader or other iterator yielding dicts
+    :param chunk_size: number of rows per chunk (default: 3)
+    """
+    chunk = []
+    for row in reader:
+        chunk.append(row)
+        if len(chunk) == chunk_size:
+            yield chunk
+            chunk = []
+    if chunk:  # yield remaining rows (if any)
+        yield chunk

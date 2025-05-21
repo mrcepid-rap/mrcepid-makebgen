@@ -16,12 +16,13 @@ from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
+from makebgen.helper_tools.concat_bgens import chunk_dict_reader, process_chunk_group
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
-def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
+def main(output_prefix: str, coordinate_file: str, make_bcf: bool, concatenate_bgens: bool, size_of_bgen: int) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -32,8 +33,27 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool) -> dict:
     :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
+    :param concatenate_bgens: Should the bgen files be concatenated into a single file (separate run)?
+    :param size_of_bgen: The number of chunks to concatenate into a single bgen file.
     :return: An output dictionary following DNANexus conventions.
     """
+
+    if concatenate_bgens:
+
+        coordinates = InputFileHandler(coordinate_file).get_file_handle()
+        with check_gzipped(coordinates) as coord_file:
+            coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
+            for chunk_index, chunk in enumerate(chunk_dict_reader(coord_file_reader, chunk_size=size_of_bgen), start=1):
+                # process the chunk group
+                output = process_chunk_group(batch_index=chunk_index, chunk=chunk)
+
+        output = {'bgen': dxpy.dxlink(generate_linked_dx_file(output['bgen'])),
+                  'index': dxpy.dxlink(generate_linked_dx_file(f"{output['bgen']}.bgi")),
+                  'sample': dxpy.dxlink(generate_linked_dx_file(output['sample'])),
+                  'vep': dxpy.dxlink(generate_linked_dx_file(output['vep'])),
+                  'vep_idx': dxpy.dxlink(generate_linked_dx_file(output['vep_index']))}
+
+        return output
 
     # Get the processed coordinate file
     total_bcf = 0

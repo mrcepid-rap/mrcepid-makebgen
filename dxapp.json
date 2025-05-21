@@ -25,6 +25,20 @@
       "class": "boolean",
       "default": false,
       "help": "Make a concatenated BCF in addition to bgen. WARNING: This can lead to very long runtimes if enabled and is intended for testing only."
+    },
+        {
+      "name": "concatenate_bgens",
+      "label": "Make large BGEN that is concatenated from multiple BGENs?",
+      "class": "boolean",
+      "default": false,
+      "help": "Make a concatenated BGEN from multiple BGENs."
+    },
+        {
+      "name": "size_of_bgen",
+      "label": "How many BGEN files to concatenate?",
+      "class": "boolean",
+      "default": 3,
+      "help": "How many BGEN files to concatenate? This is only used if concatenate_bgens is set to true. The default is 3, which means that the first 3 BGEN files will be concatenated into a single BGEN file."
     }
   ],
   "outputSpec": [

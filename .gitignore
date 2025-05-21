@@ -11,6 +11,7 @@ makebgen/__pycache__/
 makebgen/deduplication/__pycache__/
 makebgen/process_bgen/__pycache__/
 test/__pycache__/
+makebgen/helper_tools/__pycache__/
 
 # Poetry lock file
 poetry.lock
@@ -38,3 +39,4 @@ test/chunking_log_chr7.txt
 test/chunking_log_chr8.txt
 test/test_data/chr7_concatenated_output.txt
 final_dict.json
+test/concat_coords.txt

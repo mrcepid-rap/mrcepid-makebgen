@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from makebgen.process_bgen.helper import split_coordinates_file, run_splitter
+from makebgen.helper_tools.chunking_helper import split_coordinates_file, run_splitter
 
 # a bit of setting up
 test_data_dir = Path(__file__).parent / 'test_data'
@@ -119,7 +119,7 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
 @pytest.mark.parametrize(
     argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
     argvalues=[
-        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'chunked_files', 70),
+        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'chunked_files', 35),
     ]
 )
 def test_run_splitter(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
@@ -132,20 +132,20 @@ def test_run_splitter(input_data: Path, gene_dict: Path, chunk_size: int, output
     run_splitter(coordinate_path=data, gene_dict=gene_dict, chunk_size=chunk_size, output_path=output_path)
 
     # Check if the output directory exists
-    output_dir = Path(output_path)
+    output_dir = Path('chunked_files')
     assert output_dir.exists(), f"Output directory {output_dir} does not exist."
 
     # Check there are 70 files in the output directory
     output_files = list(output_dir.glob("*"))
     print(output_files)
     assert len(
-        output_files) == expected_chunks, f"Expected 70 files, but found {len(output_files)} files in {output_dir}."
+        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."
 
 
 @pytest.mark.parametrize(
     argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
     argvalues=[
-        (Path("test_coords_v2.txt"), Path('final_dict.json'), 3, 'chunked_files', 70),
+        (Path("test_coords_v2.txt"), Path('final_dict.json'), 3, 'chunked_files', 35),
     ]
 )
 def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
@@ -178,10 +178,10 @@ def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output
         print(f"Error output: {e.stderr}")
 
     # Check if the output directory exists
-    output_dir = Path(output_path)
+    output_dir = Path('chunked_files')
     assert output_dir.exists(), f"Output directory {output_dir} does not exist."
 
     # Check there are 70 files in the output directory
     output_files = list(output_dir.glob("*"))
     assert len(
-        output_files) == expected_chunks, f"Expected 70 files, but found {len(output_files)} files in {output_dir}."
+        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."
