@@ -66,7 +66,7 @@ def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
 
-        current_df = pd.read_csv(gzip.open(Path(vep_id)), sep="\t", index_col=False)
+        current_df = pd.read_csv(gzip.open(vep_id), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
         current_df.rename(columns={'ID': 'varID'}, inplace=True)

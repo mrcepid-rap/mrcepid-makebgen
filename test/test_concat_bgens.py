@@ -1,16 +1,22 @@
-from general_utilities.association_resources import check_gzipped
 import csv
-from makebgen.helper_tools.concat_bgens import process_chunk_group, chunk_dict_reader
-from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
-import pytest
 from pathlib import Path
+from typing import Iterator, List, Dict
+
+import pytest
+from general_utilities.association_resources import check_gzipped
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
+
+from scripts.concat_bgens import process_chunk_group, chunk_dict_reader
+
+# Directory containing test data files
 test_data_dir = Path(__file__).parent / 'test_data'
 
+
 @pytest.mark.parametrize(
-["input_coords"],
-[
-    ("concat_coords.txt",)
-]
+    ["input_coords"],
+    [
+        ("concat_coords.txt",)
+    ]
 )
 def test_process_chunk_group(input_coords):
     data = test_data_dir / input_coords
@@ -30,3 +36,4 @@ def test_process_chunk_group(input_coords):
                     file.unlink()
                 else:
                     print(f"Warning: File {file} does not exist and will not be deleted.")
+

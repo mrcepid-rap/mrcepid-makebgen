@@ -1,6 +1,6 @@
 import gzip
 from pathlib import Path
-from typing import Iterator, List, Dict
+from typing import Iterator, List, Dict, Union, Iterable, Any
 
 from general_utilities.association_resources import bgzip_and_tabix
 from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
@@ -81,7 +81,6 @@ def process_chunk_group(batch_index: int, chunk: List[Dict[str, str]],
     for f in files['bgen'] + files['sample'] + files['vep']:
         if f.exists():
             f.unlink()
-    out_vep.unlink()
 
     return {
         'bgen': out_bgen,
@@ -92,19 +91,23 @@ def process_chunk_group(batch_index: int, chunk: List[Dict[str, str]],
     }
 
 
-def chunk_dict_reader(reader: Iterator[Dict[str, str]], chunk_size: int) -> Iterator[List[Dict[str, str]]]:
+def chunk_dict_reader(reader: Union[Iterable[Dict[str, Any]], Dict[str, Any]], chunk_size: int) -> Iterator[
+    List[Dict[str, Any]]]:
     """
-    Yield batches of rows from a DictReader in chunks of `chunk_size`.
-    The final chunk may be smaller if rows are exhausted.
+    Yield batches of rows from an iterable of dictionaries or a single dictionary in chunks of `chunk_size`.
 
-    :param reader: csv.DictReader or other iterator yielding dicts
-    :param chunk_size: number of rows per chunk (default: 3)
+    :param reader: An iterable of dicts (e.g. csv.DictReader, list of dicts), or a plain dictionary
+    :param chunk_size: Number of rows per chunk
     """
+    if isinstance(reader, dict):
+        # Convert dictionary to list of {"key": ..., "value": ...} format
+        reader = [{"key": k, "value": v} for k, v in reader.items()]
+
     chunk = []
     for row in reader:
         chunk.append(row)
         if len(chunk) == chunk_size:
             yield chunk
             chunk = []
-    if chunk:  # yield remaining rows (if any)
+    if chunk:
         yield chunk

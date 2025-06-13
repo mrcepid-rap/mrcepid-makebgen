@@ -1,350 +1,280 @@
 """
-This script is designed to help with the processing of bgen files for WGS data.
-It splits large genomic coordinate files into chunks, while ensuring that chunks do not break across genes or file boundaries,
-and that each chunk contains no more than a specified number of files (default: 750).
+This is a helper script to chunk the BGEN files into chunks of 3Mb or less than 750 files, so that they can
+be concatenated into a single BGEN file. Note that a key part of this script is that the ends of each chunk
+cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not overlapping with any gene.
 """
+
+# NOTE: Need to create an ENSEMBL gene dictionary JSON file that contains the genomic locations of all genes.
 
 import argparse
 import json
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Union, Tuple, List, Dict
 
 import pandas as pd
-from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
+from intervaltree import IntervalTree
 
 
 def parse_arguments():
-    """Parse command-line arguments for input file paths, chunk size, and output directory."""
-    parser = argparse.ArgumentParser(description="Process bgen files for WGS data.")
-    parser.add_argument("--coordinate_path", type=str, required=True, help="Path to the coordinate file.")
-    parser.add_argument("--gene_dict", type=str, required=True, help="Path to the gene dictionary file.")
-    parser.add_argument("--chunk_size", type=int, default=3, required=False, help="Chunk size in Mb (default: 3Mb).")
-    parser.add_argument("--output_path", type=str, default="chunked_files", required=False,
-                        help="Path to the output directory (default: 'chunked_files').")
+    parser = argparse.ArgumentParser(description="Split WGS BGEN files into chunks without overlapping genes or files.")
+    parser.add_argument("--coordinate_path", type=str, required=True, help="Path to the input coordinate file.")
+    parser.add_argument("--gene_dict", type=str, required=True, help="Path to the JSON gene dictionary.")
+    parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size in megabases (default: 3Mb).")
+    parser.add_argument("--output_path", type=str, default="chunked_files", help="Directory to save chunked output.")
     return parser.parse_args()
 
 
-def output_chunked_file(chunked_file: pd.DataFrame, output_dir: Path) -> None:
+def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:
     """
-    Write each chromosome's chunked coordinates to a separate file in the output directory.
+    Parse a gene dictionary JSON file into a DataFrame.
 
-    :param chunked_file: DataFrame containing chunked coordinates
-    :param output_dir: Directory where the chunked files will be saved.
-    :return: None
+    :param gene_dict_path: Path to the gene dictionary JSON file.
+    :return: DataFrame containing gene information.
     """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # load the gene dictionary from the JSON file
+    with open(gene_dict_path, 'r') as genes:
+        raw = json.load(genes)
 
-    for chrom in chunked_file['chrom'].unique():
-        chrom_df = chunked_file[chunked_file['chrom'] == chrom].reset_index(drop=True)
-        output_file = f"{chrom}.txt"
-        chrom_df.to_csv(output_dir / output_file, sep='\t', index=False, header=True)
+    records = []
 
-
-def split_coordinates_file(coordinates_file: pd.DataFrame, gene_dict: Union[dict, Path],
-                           chunk_size: int = 3) -> pd.DataFrame:
-    """
-    Orchestrates the splitting of coordinates into chunks based on chunk size and gene boundaries.
-    Returns a DataFrame of all chunked records.
-    """
-    print(f"Creating {chunk_size}Mb chunks for bgens")
-    chunk_size = chunk_size * 1_000_000
-    gene_df = parse_gene_dict_to_df(gene_dict)
-
-    chunks, logs = process_chromosome_chunks(coordinates_file, gene_df, chunk_size)
-
-    chunk_df = pd.DataFrame(chunks)
-    chunk_df = sort_coordinates_by_position(chunk_df).reset_index(drop=True)
-    log_df = pd.DataFrame(logs)
-    log_file_path = Path(f"chunking_log_{chunks[-1]['chrom'].split('_')[0]}.txt")
-    log_df.to_csv(log_file_path, sep='\t', index=False)
-
-    return chunk_df
-
-
-def process_chromosome_chunks(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame, chunk_size: int) -> Tuple[list, list]:
-    """
-    Iterates over each chromosome and splits its coordinates into chunks.
-
-    :param coordinates_file: DataFrame containing genomic coordinates
-    :param gene_df: DataFrame containing gene information.
-    :param chunk_size: Size of each chunk in base pairs.
-    :return: A tuple containing a list of dictionaries representing chunks and a list of logs for each chunk.
-    """
-    chunks = []
-    logs = []
-
-    for chrom in coordinates_file['chrom'].unique():
-        chrom_df = coordinates_file[coordinates_file['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
-        chrom_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
-
-        if chrom_df.empty or chrom_genes.empty:
-            raise ValueError(f"Chromosome data or gene data is empty for {chrom}")
-
-        chrom_chunks, chrom_logs = generate_chunks_for_chromosome(chrom_df, chrom_genes, chrom, chunk_size)
-        chunks.extend(chrom_chunks)
-        logs.extend(chrom_logs)
-
-    return chunks, logs
-
-
-def generate_chunks_for_chromosome(chrom_df: pd.DataFrame, chrom_genes: pd.DataFrame, chrom: str, chunk_size: int) -> Tuple[list, list]:
-    """
-    Splits a single chromosome's coordinate data into valid chunks.
-
-    :param chrom_df: DataFrame containing chromosome coordinates.
-    :param chrom_genes: DataFrame containing genes for the current chromosome.
-    :param chrom: Chromosome identifier (e.g., 'chr1').
-    :param chunk_size: Size of each chunk in base pairs.
-    :return: A list of dictionaries representing chunks and a list of logs for each chunk.
-    """
-    chunks = []
-    logs = []
-
-    current_start = chrom_df['start'].min()
-    chrom_max_end = chrom_df['end'].max()
-    chunk_number = 1
-    sub_chunk_index = 1
-
-    while current_start <= chrom_max_end:
-        original_chunk_start = current_start
-        chunk_info, overlapping_rows = adjust_chunk_end(
-            chrom_df, chrom_genes, chrom, current_start, original_chunk_start + chunk_size, chunk_number
-        )
-
-        # Create label: v1 if we hit file limit, otherwise just chunk number
-        chunk_label = (
-            f"{chrom}_chunk{chunk_number}_v{sub_chunk_index}"
-            if chunk_info['file_limit_adjustment'] != 'not_applicable'
-            else f"{chrom}_chunk{chunk_number}"
-        )
-
-        for row in overlapping_rows.itertuples(index=False):
-            chunks.append({
-                'chrom': chunk_label,
-                'start': row.start,
-                'end': row.end,
-                'chunk_start': chunk_info['chunk_start'],
-                'chunk_end': chunk_info['chunk_end'],
-                'vcf_prefix': row.vcf_prefix,
-                'output_bcf': row.output_bcf,
-                'output_bcf_idx': row.output_bcf_idx,
-                'output_vep': row.output_vep,
-                'output_vep_idx': row.output_vep_idx
-            })
-
-        logs.append(chunk_info)
-
-        # Prepare for next chunk
-        next_files = chrom_df[chrom_df['start'] > chunk_info['chunk_end']]
-        if chunk_info['file_limit_adjustment'] != 'not_applicable' and not next_files.empty:
-            current_start = next_files['start'].min()
-            sub_chunk_index += 1
-        else:
-            if not next_files.empty:
-                current_start = next_files['start'].min()
-            else:
-                break
-            chunk_number += 1
-            sub_chunk_index = 1
-
-    return chunks, logs
-
-
-def adjust_chunk_end(chrom_df: pd.DataFrame, chrom_genes: pd.DataFrame, chrom: str, current_start: int,
-                     proposed_end: int, chunk_number: int) -> Tuple[dict, pd.DataFrame]:
-    """
-    Adjust the chunk end to avoid falling within a gene and avoid splitting files.
-    """
-    log_entry = {
-        'chrom': chrom,
-        'chunk_number': f"{chrom}_chunk{chunk_number}",
-        'chunk_start': current_start,
-        'file_boundary_adjustment': 'not_applicable',
-        'final_adjusted_to': 'not_applicable',
-        'final_end_in_gene': None,
-        'chunk_end': None,
-        'file_limit_adjustment': 'not_applicable'
-    }
-
-    max_end = chrom_df['end'].max()
-    current_end = min(proposed_end, max_end)
-
-    # Step 1: Make sure we don't end within a gene
-    while True:
-        gene_context = find_gene_context(current_end, chrom_genes)
-        if gene_context['status'] == 'within':
-            gene_name = gene_context['genes'][0]
-            downstream = find_position_after_within_gene(chrom, gene_name, chrom_genes)
-            log_entry['final_end_in_gene'] = gene_name
-
-            if downstream is None:
-                current_end = max_end
-                break
-            else:
-                current_end = downstream['between_position']
-        else:
-            break
-
-    # Step 2: Adjust to file boundary if needed
-    overlapping_at_boundary = chrom_df[
-        (chrom_df['start'] <= current_end) & (chrom_df['end'] > current_end)
-    ]
-    if not overlapping_at_boundary.empty:
-        current_end = overlapping_at_boundary['end'].max()
-        log_entry['file_boundary_adjustment'] = f"moved to {current_end} to avoid file split"
-
-        # Re-check: if this new boundary falls within a gene, restart step 1
-        gene_context = find_gene_context(current_end, chrom_genes)
-        if gene_context['status'] == 'within':
-            gene_name = gene_context['genes'][0]
-            downstream = find_position_after_within_gene(chrom, gene_name, chrom_genes)
-            log_entry['final_end_in_gene'] = gene_name
-            if downstream is None:
-                current_end = max_end
-            else:
-                current_end = downstream['between_position']
-
-    # Step 3: Final context note
-    final_context = find_gene_context(current_end, chrom_genes)
-    if final_context['status'] == 'between':
-        up = final_context.get('closest_upstream')
-        down = final_context.get('closest_downstream')
-        if up and down:
-            log_entry['final_adjusted_to'] = f"between {up} and {down}"
-        elif up:
-            log_entry['final_adjusted_to'] = f"after {up}"
-        elif down:
-            log_entry['final_adjusted_to'] = f"before {down}"
-        else:
-            log_entry['final_adjusted_to'] = 'no nearby genes found'
-
-    # Step 4: Extract overlapping rows and enforce file count
-    overlapping_rows = chrom_df[
-        (chrom_df['end'] >= current_start) & (chrom_df['start'] <= current_end)
-    ]
-    if len(overlapping_rows) > 750:
-        limited_rows = overlapping_rows.iloc[:750]
-        current_end = limited_rows['end'].max()
-        overlapping_rows = limited_rows
-        log_entry['file_limit_adjustment'] = f"limited to 750 files, adjusted to {current_end}"
-
-    log_entry['chunk_end'] = current_end
-    return log_entry, overlapping_rows
-
-
-
-def parse_gene_dict_to_df(gene_dict: dict) -> pd.DataFrame:
-    """
-    Converts a gene dictionary into a sorted DataFrame with columns ['gene', 'chrom', 'start', 'end'].
-
-    :param gene_dict: Dictionary with gene names as keys and genomic locations as values.
-    :return: DataFrame with sorted gene coordinates.
-    """
-    gene_records = []
-    for gene, details in gene_dict.items():
-        loc = details['genomic_location']
-        gene_records.append({
+    # Extract relevant information from the raw gene dictionary
+    for gene, data in raw.items():
+        loc = data['genomic_location']
+        records.append({
             'gene': gene,
             'chrom': f"chr{loc['chromosome']}",
             'start': loc['start'],
             'end': loc['end']
         })
-    gene_df = pd.DataFrame(gene_records)
-    return sort_coordinates_by_position(gene_df).reset_index(drop=True)
+
+    # Create a DataFrame from the records
+    return pd.DataFrame(records)
 
 
-def find_position_after_within_gene(chrom: str, gene_name: str, gene_df: pd.DataFrame) -> Union[dict, None]:
+def build_interval_tree(df: pd.DataFrame, chrom: str, start_col: str, end_col: str,
+                        label_col: str = None) -> IntervalTree:
     """
-    Finds a midpoint between the current gene and the next non-overlapping gene on the same chromosome.
-    Returns None if no downstream gene exists.
+    Builds an IntervalTree from a DataFrame for a specific chromosome.
 
-    :param chrom: Chromosome identifier (e.g., 'chr1')
-    :param gene_name: Name of the current gene
-    :param gene_df: DataFrame containing gene information with columns ['gene', 'chrom', 'start', 'end']
-    :return: Dictionary with 'between_position', 'within_gene', and 'next_gene' keys, or None if no next gene.
+    :param df: DataFrame containing genomic intervals.
+    :param chrom: Chromosome to filter the DataFrame on.
+    :param start_col: Column name for the start positions.
+    :param end_col: Column name for the end positions.
+    :param label_col: Optional column name for labels to associate with intervals.
+    :return: IntervalTree containing intervals for the specified chromosome.
     """
-    genes_on_chrom = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
-    gene_idx = genes_on_chrom[genes_on_chrom['gene'] == gene_name].index
-    if gene_idx.empty:
-        raise ValueError("Gene not found: " + str(gene_name))
 
-    gene_idx = gene_idx[0]
-    current_end = genes_on_chrom.loc[gene_idx, 'end']
+    # create an IntervalTree for the specified chromosome
+    tree = IntervalTree()
 
-    for i in range(gene_idx + 1, len(genes_on_chrom)):
-        next_start = genes_on_chrom.loc[i, 'start']
-        next_gene = genes_on_chrom.loc[i, 'gene']
-
-        if next_start > current_end:
-            midpoint = (current_end + next_start) // 2
-            return {
-                'between_position': midpoint,
-                'within_gene': genes_on_chrom.loc[gene_idx, 'gene'],
-                'next_gene': next_gene
-            }
-        current_end = max(current_end, genes_on_chrom.loc[i, 'end'])
-
-    return None
+    # For the specified chromosome, iterate through each row of the DataFrame
+    # and insert an interval into the interval tree using the start and end positions.
+    # If a label column is specified, associate that label with the interval.
+    for index, row in df[df['chrom'] == chrom].iterrows():
+        label = row[label_col] if label_col else None
+        tree[row[start_col]:row[end_col]] = label
+    return tree
 
 
-def find_gene_context(position: int, genes_on_chrom: pd.DataFrame) -> dict:
+def is_position_within_gene(tree: IntervalTree, pos: int) -> Union[str, None]:
     """
-    Determines whether the given position falls within a gene or between genes.
-    Returns a dictionary indicating status and gene context.
+    Checks if a given position is within any gene interval in the IntervalTree.
 
-    :param position: Position to check
-    :param genes_on_chrom: DataFrame of genes on the chromosome
+    :param tree: IntervalTree containing gene intervals.
+    :param pos: Position to check.
+    :return: The label of the first gene that contains the position, or None if no gene contains it.
     """
-    within = genes_on_chrom[(genes_on_chrom['start'] <= position) & (genes_on_chrom['end'] >= position)]
-    if not within.empty:
-        return {'status': 'within', 'genes': within['gene'].tolist()}
-
-    upstream = genes_on_chrom[genes_on_chrom['end'] < position]
-    downstream = genes_on_chrom[genes_on_chrom['start'] > position]
-
-    closest_up = upstream.iloc[-1] if not upstream.empty else None
-    closest_down = downstream.iloc[0] if not downstream.empty else None
-
-    return {
-        'status': 'between',
-        'closest_upstream': closest_up['gene'] if closest_up is not None else None,
-        'closest_downstream': closest_down['gene'] if closest_down is not None else None
-    }
+    hits = list(tree[pos])
+    return hits[0].data if hits else None
 
 
-def sort_coordinates_by_position(df: pd.DataFrame) -> pd.DataFrame:
+def get_safe_chunk_ends(chrom_df, gene_intervals):
     """
-    Sorts a coordinate dataframe by chromosome number (after stripping 'chr') and start position.
+    Filters out positions in chrom_df['end'] that overlap with any interval in gene_intervals.
 
-    :param df: coordinate dataframe
-    :return: sorted dataframe with an additional 'chrom_num' column for sorting
+    :param chrom_df: DataFrame containing chromosome data with 'end' positions.
+    :param gene_intervals: IntervalTree containing gene intervals.
+    :return: List of 'end' positions that do not overlap with any gene intervals.
     """
-    df['chrom_num'] = df['chrom'].str.replace('chr', '')
-    return df.sort_values(by=['chrom_num', 'start']).drop(columns='chrom_num')
+    safe_ends = []
+    for pos in chrom_df['end']:
+        # Check if the position overlaps with any interval in the tree
+        if not gene_intervals.overlaps(pos):
+            safe_ends.append(pos)
+    return safe_ends
 
 
-if __name__ == "__main__":
-    # Parse CLI args
-    args = parse_arguments()
+def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, chunk_size_bp: int) -> Tuple[
+    pd.DataFrame, List[Dict]]:
+    """
+    Splits a chromosome DataFrame into chunks of specified size, ensuring that chunks do not overlap with genes.
 
-    # Load coordinate file
-    coordinate_path = InputFileHandler(Path(args.coordinate_path)).get_file_handle()
-    original_file = pd.read_csv(coordinate_path, sep='\t')
-    original_file = sort_coordinates_by_position(original_file).reset_index(drop=True)
+    :param chrom_df: DataFrame containing chromosome data with 'start' and 'end' positions.
+    :param gene_df: DataFrame containing gene information.
+    :param chrom: Chromosome identifier to filter the DataFrame.
+    :param chunk_size_bp: Size of each chunk in base pairs.
+    :return: Tuple containing a DataFrame of chunks and a log entry for each chunk.
+    """
 
-    # Load gene dictionary
-    gene_dict_path = InputFileHandler(Path(args.gene_dict)).get_file_handle()
-    with open(gene_dict_path, 'r') as f:
-        gene_dict = json.load(f)
+    # build an interval tree for the genes on this chromosome
+    gene_tree = build_interval_tree(gene_df, chrom, 'start', 'end', 'gene')
+    # sort the chromosome DataFrame by 'start' position
+    chrom_df = chrom_df.sort_values(by='start').reset_index(drop=True)
 
-    # Create output directory
-    output_path = Path(args.output_path)
+    chunks = []
+    log_entries = []
+
+    # set the initial start position and maximum end position for the chromosome
+    current_start = chrom_df['start'].min()
+    chrom_max = chrom_df['end'].max()
+    # get the safe chunk ends that do not overlap with genes
+    safe_chunk_ends = get_safe_chunk_ends(chrom_df, gene_tree)
+    chunk_number = 1
+
+    while current_start <= chrom_max:
+        # Calculate the ideal end position for the current chunk
+        ideal_end = current_start + chunk_size_bp
+        # note how many files are remaining in the DataFrame
+        files_remaining = chrom_df[chrom_df['start'] >= current_start]
+        # if there are no files remaining, break the loop
+        if files_remaining.empty:
+            break
+
+        # Filter to candidate ends <= ideal_end and safe
+        safe_within_limit = [end for end in safe_chunk_ends if current_start < end <= ideal_end]
+        # if no safe end is found within the limit, raise an error
+        if not safe_within_limit:
+            raise RuntimeError(f"No safe chunk end found near {ideal_end} on {chrom}")
+
+        # Set the proposed end to the maximum of the safe ends within the limit
+        proposed_end = max(safe_within_limit)
+        # see if the proposed end is within a gene
+        within_gene = is_position_within_gene(gene_tree, proposed_end)
+        # calculate the chunk rows that fall within the proposed end
+        chunk_rows = files_remaining[files_remaining['start'] <= proposed_end]
+
+        # if the chunk rows exceed the file limit, adjust the proposed end
+        if len(chunk_rows) > 750:
+            chunk_rows = chunk_rows.iloc[:750]
+            proposed_end = chunk_rows['end'].max()
+            # add a check to ensure the proposed end is not within a gene
+            if within_gene:
+                raise RuntimeError(f"File limit reached but proposed_end {proposed_end} is within a gene.")
+
+        # Log info
+        log_entry = {
+            'chrom': chrom,
+            'chunk_number': f"{chrom}_chunk{chunk_number}",
+            'chunk_start': current_start,
+            'proposed_end': ideal_end,
+            'adjusted_for_file': proposed_end,
+            'adjusted_for_gene': 'safe',
+            'final_chunk_end': proposed_end,
+            'not_within_gene': within_gene is None
+        }
+        # Add gene context (for logging purposes)
+        nearby_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
+        upstream_gene = nearby_genes[nearby_genes['end'] < proposed_end]
+        downstream_gene = nearby_genes[nearby_genes['start'] > proposed_end]
+        gene_before = upstream_gene.iloc[-1]['gene'] if not upstream_gene.empty else 'None'
+        gene_after = downstream_gene.iloc[0]['gene'] if not downstream_gene.empty else 'None'
+        log_entry['between_genes'] = f"{gene_before} and {gene_after}"
+
+        # Create the chunk entry
+        for _, row in chunk_rows.iterrows():
+            chunks.append({
+                'chrom': log_entry['chunk_number'],
+                'start': row['start'],
+                'end': row['end'],
+                'chunk_start': current_start,
+                'chunk_end': proposed_end,
+                'vcf_prefix': row['vcf_prefix'],
+                'output_bcf': row['output_bcf'],
+                'output_bcf_idx': row['output_bcf_idx'],
+                'output_vep': row['output_vep'],
+                'output_vep_idx': row['output_vep_idx']
+            })
+
+        # Add the log entry to the list
+        log_entries.append(log_entry)
+        # Update the current start position to the next start after the proposed end
+        next_df = chrom_df[chrom_df['start'] > proposed_end]
+        # if there are no more rows, break the loop
+        if next_df.empty:
+            break
+        # ensure the next start is greater than the proposed end
+        current_start = next_df['start'].min()
+        # increment the chunk number
+        chunk_number += 1
+
+    # convert the chunks list to a DataFrame
+    chunk_df = pd.DataFrame(chunks)
+
+    # return the chunk DataFrame and the log entries
+    return chunk_df, log_entries
+
+
+def split_coordinates_file(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame, chunk_size: int):
+    """
+    Splits the coordinates file into chunks based on the specified chunk size,
+    ensuring that chunks do not overlap with genes.
+
+    :param coordinates_file: Dataframe with the genetic file coordinates.
+    :param gene_df: Dataframe with gene information.
+    :param chunk_size: Size of each chunk in megabases (default: 3Mb).
+    :return: Tuple containing a DataFrame of chunks and a list of log entries.
+    """
+    # Convert chunk size from megabases to base pairs
+    chunk_size_bp = int(chunk_size * 1_000_000)
+
+    # Initialize lists to hold all chunks and logs
+    all_chunks = []
+    all_logs = []
+
+    # Iterate through each unique chromosome in the coordinates file
+    for chrom in coordinates_file['chrom'].unique():
+        # Filter the coordinates file for the current chromosome
+        chrom_df = coordinates_file[coordinates_file['chrom'] == chrom]
+        # run the chunking function for the current chromosome
+        chunk_df, log_entries = chunk_chromosome(chrom_df, gene_df, chrom, chunk_size_bp)
+        # Add the chunk DataFrame and log entries to the output
+        all_chunks.append(chunk_df)
+        all_logs.extend(log_entries)
+
+    # Concatenate all chunks into a single DataFrame and reset the index
+    # return the logs
+    return pd.concat(all_chunks).reset_index(drop=True), all_logs
+
+
+def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, output_path: Path):
+    """
+    Main function to create BGEN chunk coordinates
+
+    :param gene_dict: Path to the JSON file containing gene dictionary.
+    :param coordinate_path: Path to the input coordinate file.
+    :param chunk_size: Size of each chunk in megabases.
+    :param output_path: Directory to save the chunked output files.
+    :return: None
+    """
+
+    # Read the coordinate file and prase gene dictionary
+    coord_df = pd.read_csv(coordinate_path, sep='\t')
+    gene_df = parse_gene_dict(gene_dict)
+
+    chunk_size = chunk_size
+    output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Perform chunking
-    chunked_df = split_coordinates_file(original_file, gene_dict, args.chunk_size)
+    # Split the coordinates file into chunks
+    chunked_df, log_entries = split_coordinates_file(coord_df, gene_df, chunk_size)
 
-    # Save output
-    output_chunked_file(chunked_file=chunked_df, output_dir=output_path)
-    print(f"Chunked file saved to: {output_path}")
+    # Save each chunk to a separate file
+    for chunk_label in chunked_df['chrom'].unique():
+        chunk_df = chunked_df[chunked_df['chrom'] == chunk_label]
+        chunk_df.to_csv(output_path / f"{chunk_label}.txt", sep='\t', index=False)
+
+    # Save the log entries to a text file
+    pd.DataFrame(log_entries).to_csv("chunking_log.txt", sep='\t', index=False)
+    # also save all chunks combined into a single file
+    chunked_df.to_csv("all_chunks_combined.txt", sep='\t', index=False)
+

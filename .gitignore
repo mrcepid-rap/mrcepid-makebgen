@@ -33,11 +33,7 @@ test/chunked_files
 test/test_data/chunked_files
 
 # Output files
-test/chunking_log_chr1.txt
-test/chunking_log_chr2.txt
-test/chunking_log_chr3.txt
-test/chunking_log_chr7.txt
-test/chunking_log_chr8.txt
+test/chunking_log_chr*
 test/test_data/chr7_concatenated_output.txt
 final_dict.json
 test/concat_coords.txt
