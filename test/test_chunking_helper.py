@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from makebgen.helper_tools.chunking_helper import split_coordinates_file, run_splitter
+from scripts.chunking_helper import split_coordinates_file
 
 # a bit of setting up
 test_data_dir = Path(__file__).parent / 'test_data'
@@ -39,60 +39,60 @@ with open(test_data_dir / 'final_dict.json', 'r') as f:
     (
             pd.DataFrame({
                 'chrom': ['chr1'],
-                'start': [100],
-                'end': [300],
+                'start': [1000000],
+                'end': [3000000],
                 'vcf_prefix': ['sample1'],
                 'output_bcf': ['sample1.bcf'],
                 'output_bcf_idx': ['sample1.bcf.csi'],
                 'output_vep': ['sample1.vep.tsv.gz'],
                 'output_vep_idx': ['sample1.vep.tsv.gz.tbi'],
             }),
-            250,
+            2.5,
             [
-                {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300,
-                 'chunk_start': 100, 'chunk_end': 350, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr1_chunk1', 'start': 1000000, 'end': 3000000,
+                 'chunk_start': 1000000, 'chunk_end': 3618261, 'vcf_prefix': 'sample1'},
             ]
     ),
     # Test case 3: record overlaps multiple chunks
     (
             pd.DataFrame({
                 'chrom': ['chr2', 'chr3'],
-                'start': [100, 750],
-                'end': [700, 1000],
+                'start': [1000000, 7500000],
+                'end': [7000000, 10000000],
                 'vcf_prefix': ['sample2', 'sample3'],
                 'output_bcf': ['sample2.bcf', 'sample3.bcf'],
                 'output_bcf_idx': ['sample2.bcf.csi', 'sample3.bcf.csi'],
                 'output_vep': ['sample2.vep.tsv.gz', 'sample3.vep.tsv.gz'],
                 'output_vep_idx': ['sample2.vep.tsv.gz.tbi', 'sample3.vep.tsv.gz.tbi'],
             }),
-            300,
+            3,
             [
-                {'chrom': 'chr2_chunk1', 'start': 100, 'end': 700,
-                 'chunk_start': 100, 'chunk_end': 700, 'vcf_prefix': 'sample2'},
-                {'chrom': 'chr3_chunk1', 'start': 750, 'end': 1000,
-                 'chunk_start': 750, 'chunk_end': 1050, 'vcf_prefix': 'sample3'},
+                {'chrom': 'chr2_chunk1', 'start': 1000000, 'end': 7000000,
+                 'chunk_start': 1000000, 'chunk_end': 7104756, 'vcf_prefix': 'sample2'},
+                {'chrom': 'chr3_chunk1', 'start': 7500000, 'end': 10000000,
+                 'chunk_start': 7500000, 'chunk_end': 10733678, 'vcf_prefix': 'sample3'},
             ]
     ),
     # Additional test cases:
     (
             pd.DataFrame({
                 'chrom': ['chr1', 'chr1', 'chr2'],
-                'start': [100, 301, 601],
-                'end': [300, 600, 900],
+                'start': [1000000, 3010000, 6010000],
+                'end': [3000000, 6000000, 9000000],
                 'vcf_prefix': ['sample1', 'sample1', 'sample2'],
                 'output_bcf': ['sample1.bcf', 'sample1.bcf', 'sample2.bcf'],
                 'output_bcf_idx': ['sample1.bcf.csi', 'sample1.bcf.csi', 'sample2.bcf.csi'],
                 'output_vep': ['sample1.vep.tsv.gz', 'sample1.vep.tsv.gz', 'sample2.vep.tsv.gz'],
                 'output_vep_idx': ['sample1.vep.tsv.gz.tbi', 'sample1.vep.tsv.gz.tbi', 'sample2.vep.tsv.gz.tbi'],
             }),
-            300,
+            3,
             [
-                {'chrom': 'chr1_chunk1', 'start': 100, 'end': 300,
-                 'chunk_start': 100, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
-                {'chrom': 'chr1_chunk1', 'start': 301, 'end': 600,
-                 'chunk_start': 100, 'chunk_end': 600, 'vcf_prefix': 'sample1'},
-                {'chrom': 'chr2_chunk1', 'start': 601, 'end': 900,
-                 'chunk_start': 601, 'chunk_end': 901, 'vcf_prefix': 'sample2'},
+                {'chrom': 'chr1_chunk1', 'start': 1000000, 'end': 3000000,
+                 'chunk_start': 1000000, 'chunk_end': 6101489, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr1_chunk1', 'start': 3010000, 'end': 6000000,
+                 'chunk_start': 1000000, 'chunk_end': 6101489, 'vcf_prefix': 'sample1'},
+                {'chrom': 'chr2_chunk1', 'start': 6010000, 'end': 9000000,
+                 'chunk_start': 6010000, 'chunk_end': 9010000, 'vcf_prefix': 'sample2'},
             ]
     ),
 ])
@@ -119,36 +119,11 @@ def test_split_coordinates_pytest(input_data: pd.DataFrame, chunk_size: int, exp
 @pytest.mark.parametrize(
     argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
     argvalues=[
-        (Path("test_coords_v2.txt"), 'final_dict.json', 3, 'chunked_files', 35),
-    ]
-)
-def test_run_splitter(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
-    """
-    Pytest using a real(ish) file to test the run_splitter function.
-    """
-
-    data = test_data_dir / input_data
-    gene_dict = test_data_dir / gene_dict
-    run_splitter(coordinate_path=data, gene_dict=gene_dict, chunk_size=chunk_size, output_path=output_path)
-
-    # Check if the output directory exists
-    output_dir = Path('chunked_files')
-    assert output_dir.exists(), f"Output directory {output_dir} does not exist."
-
-    # Check there are 70 files in the output directory
-    output_files = list(output_dir.glob("*"))
-    print(output_files)
-    assert len(
-        output_files) == expected_chunks, f"Expected 35 files, but found {len(output_files)} files in {output_dir}."
-
-
-@pytest.mark.parametrize(
-    argnames=['input_data', 'gene_dict', 'chunk_size', 'output_path', 'expected_chunks'],
-    argvalues=[
         (Path("test_coords_v2.txt"), Path('final_dict.json'), 3, 'chunked_files', 35),
     ]
 )
-def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str, expected_chunks: int) -> None:
+def test_command_line(input_data: Path, gene_dict: Path, chunk_size: int, output_path: str,
+                      expected_chunks: int) -> None:
     """
     Test the command line interface of the script.
     """
