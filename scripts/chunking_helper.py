@@ -246,6 +246,15 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame
     return pd.concat(all_chunks).reset_index(drop=True), all_logs
 
 
+def get_chunk_number(path: Path) -> int:
+    """
+    Extracts the chunk number from the filename.
+    :param path: Path object representing the file.
+    :return: int: The chunk number extracted from the filename.
+    """
+    return int(path.name.split('chunk')[-1])
+
+
 def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, output_path: Path):
     """
     Main function to create BGEN chunk coordinates
@@ -254,7 +263,7 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
     :param coordinate_path: Path to the input coordinate file.
     :param chunk_size: Size of each chunk in megabases.
     :param output_path: Directory to save the chunked output files.
-    :return: None
+    :return: List of file paths for the chunked output files.
     """
 
     # Read the coordinate file and prase gene dictionary
@@ -278,3 +287,6 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
     # also save all chunks combined into a single file
     chunked_df.to_csv("all_chunks_combined.txt", sep='\t', index=False)
 
+    files = sorted(Path(output_path).iterdir(), key=lambda p: int(p.name.split('chunk')[-1]))
+
+    return files

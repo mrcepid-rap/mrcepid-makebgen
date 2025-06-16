@@ -81,6 +81,7 @@ def process_chunk_group(batch_index: int, chunk: List[Dict[str, str]],
     for f in files['bgen'] + files['sample'] + files['vep']:
         if f.exists():
             f.unlink()
+    out_vep.unlink()
 
     return {
         'bgen': out_bgen,

@@ -7,7 +7,6 @@
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
-from pathlib import Path
 
 import dxpy
 from general_utilities.association_resources import check_gzipped
@@ -17,14 +16,13 @@ from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
-from scripts.chunking_helper import chunking_helper
-from scripts.concat_bgens import process_chunk_group, chunk_dict_reader
+from scripts.concat_bgens import chunk_dict_reader, process_chunk_group
 
 LOGGER = MRCLogger().get_logger()
 
 
 @dxpy.entry_point('main')
-def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: str, final_bgen_size: int) -> dict:
+def main(output_prefix: str, coordinate_file: str, make_bcf: bool, concatenate_bgens: bool, size_of_bgen: int) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -35,31 +33,36 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
-    :param gene_dict: Should the bgen files be concatenated into a single file (separate run)?
-    :param final_bgen_size: Size of the final BGEN file to be created. 3 means we are concatenating 3 files,
-    which equates to around 9Mb.
-
+    :param concatenate_bgens: Should the bgen files be concatenated into a single file (separate run)?
+    :param size_of_bgen: The number of chunks to concatenate into a single bgen file.
     :return: An output dictionary following DNANexus conventions.
     """
 
-    # Get the processed coordinate file
-    total_bcf = 0
+    if concatenate_bgens:
 
-    # start the file parser class and get the coordinates file
-    coordinates = InputFileHandler(coordinate_file)
-    coordinate_path = coordinates.get_file_handle()
+        coordinates = InputFileHandler(coordinate_file).get_file_handle()
+        with check_gzipped(coordinates) as coord_file:
+            coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
+            for chunk_index, chunk in enumerate(chunk_dict_reader(coord_file_reader, chunk_size=size_of_bgen), start=1):
+                # process the chunk group
+                output = process_chunk_group(batch_index=chunk_index, chunk=chunk)
 
-    # generate the bgen chunk files in 3Mb (under 750 file limit) chunks
-    gene_index = InputFileHandler(gene_dict).get_file_handle()
-    chunking_helper(gene_dict=gene_index, chunk_size=3, output_path=Path('bgen_chunks'),
-                    coordinate_path=coordinate_path)
+                output = {'bgen': dxpy.dxlink(generate_linked_dx_file(output['bgen'])),
+                          'index': dxpy.dxlink(generate_linked_dx_file(f"{output['bgen']}.bgi")),
+                          'sample': dxpy.dxlink(generate_linked_dx_file(output['sample'])),
+                          'vep': dxpy.dxlink(generate_linked_dx_file(output['vep'])),
+                          'vep_idx': dxpy.dxlink(generate_linked_dx_file(output['vep_index']))}
 
-    output_small_chunks = []
+    else:
 
-    # run merging for each chunk
-    for bgen_chunk in Path('bgen_chunks').iterdir():
+        # Get the processed coordinate file
+        total_bcf = 0
 
-        with check_gzipped(bgen_chunk) as coord_file:
+        # start the file parser class and get the coordinates file
+        coordinates = InputFileHandler(coordinate_file)
+        coordinate_path = coordinates.get_file_handle()
+
+        with check_gzipped(coordinate_path) as coord_file:
             coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
 
             thread_utility = ThreadUtility(incrementor=100,
@@ -90,30 +93,17 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
         final_files = make_final_bgen(bgen_prefixes, output_prefix, make_bcf)
 
         # Set output
-        output_small_chunks.append(
-            {
-                'bgen': final_files['bgen']['file'],
-                'index': final_files['bgen']['index'],
-                'sample': final_files['bgen']['sample'],
-                'vep': final_files['vep']['file'],
-                'vep_idx': final_files['vep']['index']
-            }
-        )
+        output = {'bgen': dxpy.dxlink(generate_linked_dx_file(final_files['bgen']['file'])),
+                  'index': dxpy.dxlink(generate_linked_dx_file(final_files['bgen']['index'])),
+                  'sample': dxpy.dxlink(generate_linked_dx_file(final_files['bgen']['sample'])),
+                  'vep': dxpy.dxlink(generate_linked_dx_file(final_files['vep']['file'])),
+                  'vep_idx': dxpy.dxlink(generate_linked_dx_file(final_files['vep']['index']))}
 
-    output_large_chunks = []
+        if final_files['bcf']['file'] is not None:
+            output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
+            output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
 
-    for chunk_index, chunk in enumerate(chunk_dict_reader(output_small_chunks, chunk_size=final_bgen_size), start=1):
-        # Do any pre-processing logic needed here
-        processed = process_chunk_group(chunk=chunk, batch_index=chunk_index)
+    return output
 
-        output_large_chunks.append({
-            'bgen': dxpy.dxlink(generate_linked_dx_file(processed['bgen']['file'])),
-            'index': dxpy.dxlink(generate_linked_dx_file(processed['bgen']['index'])),
-            'sample': dxpy.dxlink(generate_linked_dx_file(processed['bgen']['sample'])),
-            'vep': dxpy.dxlink(generate_linked_dx_file(processed['vep']['file'])),
-            'vep_idx': dxpy.dxlink(generate_linked_dx_file(processed['vep']['index']))
-        })
-
-    return output_large_chunks
 
 dxpy.run()

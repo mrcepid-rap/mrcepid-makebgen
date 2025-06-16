@@ -437,7 +437,7 @@ def test_chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: 
     )
 
 ])
-def test_split_coordinates_file(input_data: pd.DataFrame, gene_df: pd.DataFrame, chunk_size: float,
+def test_split_coordinates_file(input_data: pd.DataFrame, gene_df: pd.DataFrame, chunk_size: int,
                                 expected: Optional[List[Dict]], should_raise: bool) -> None:
     """
     Test the `split_coordinates_file` function.
