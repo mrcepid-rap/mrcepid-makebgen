@@ -15,15 +15,6 @@ import pandas as pd
 from intervaltree import IntervalTree
 
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Split WGS BGEN files into chunks without overlapping genes or files.")
-    parser.add_argument("--coordinate_path", type=str, required=True, help="Path to the input coordinate file.")
-    parser.add_argument("--gene_dict", type=str, required=True, help="Path to the JSON gene dictionary.")
-    parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size in megabases (default: 3Mb).")
-    parser.add_argument("--output_path", type=str, default="chunked_files", help="Directory to save chunked output.")
-    return parser.parse_args()
-
-
 def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:
     """
     Parse a gene dictionary JSON file into a DataFrame.
@@ -287,6 +278,23 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
     # also save all chunks combined into a single file
     chunked_df.to_csv("all_chunks_combined.txt", sep='\t', index=False)
 
-    files = sorted(Path(output_path).iterdir(), key=lambda p: int(p.name.split('chunk')[-1]))
+    output_files = sorted(Path(output_path).iterdir(), key=lambda p: int(p.name.split('chunk')[-1].replace('.txt', '')))
 
-    return files
+    return output_files
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run BGEN chunking helper.")
+    parser.add_argument("--gene_dict", required=True, help="Path to gene dictionary JSON")
+    parser.add_argument("--coordinate_path", required=True, help="Path to coordinate TSV file")
+    parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size in Mb")
+    parser.add_argument("--output_path", required=True, help="Path to output directory")
+
+    args = parser.parse_args()
+    files = chunking_helper(
+        gene_dict=Path(args.gene_dict),
+        coordinate_path=Path(args.coordinate_path),
+        chunk_size=args.chunk_size,
+        output_path=Path(args.output_path)
+    )
+    print(f"Chunking complete. {len(files)} chunks written to {args.output_path}")
