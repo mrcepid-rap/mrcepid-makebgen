@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from bgen import BgenReader
 
-from scripts.concat_bgens import process_chunk_group, chunk_dict_reader
+from makebgen.scripts.concat_bgens import process_chunk_group, chunk_dict_reader
 
 # Directory containing test data files
 test_data_dir = Path(__file__).parent / 'test_data'

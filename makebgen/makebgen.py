@@ -16,8 +16,8 @@ from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
-from scripts.chunking_helper import chunking_helper
-from scripts.concat_bgens import chunk_dict_reader, process_chunk_group
+from makebgen.scripts.chunking_helper import chunking_helper
+from makebgen.scripts.concat_bgens import chunk_dict_reader, process_chunk_group
 
 LOGGER = MRCLogger().get_logger()
 

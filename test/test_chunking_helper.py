@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from intervaltree import IntervalTree, Interval
 
-from scripts.chunking_helper import build_interval_tree, parse_gene_dict, get_safe_chunk_ends, \
+from makebgen.scripts.chunking_helper import build_interval_tree, parse_gene_dict, get_safe_chunk_ends, \
     chunk_chromosome, is_position_within_gene, split_coordinates_file
 
 # a bit of setting up
