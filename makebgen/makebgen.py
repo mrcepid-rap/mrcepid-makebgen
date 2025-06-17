@@ -24,7 +24,7 @@ LOGGER = MRCLogger().get_logger()
 
 
 def process_one_batch(batch: list, batch_index: int,
-                      make_bcf: bool, output_prefix: str) -> list:
+                      make_bcf: bool, output_prefix: str) -> dict[str, dict]:
     """
     A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
     :param batch: A list of chunked files to process.
@@ -51,26 +51,27 @@ def process_one_batch(batch: list, batch_index: int,
             output_prefix=output_prefix
         )
 
-    merged_chunks = []
+    # And gather the resulting futures which are returns of all bgens we need to concatenate:
+    bgen_prefixes = {}
     for result in chunk_threads:
-        merged_chunks.append(result)
+        bgen_prefixes[result['vcfprefix']] = result['start']
 
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
-    merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
+    merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}", make_bcf=make_bcf)
+    #merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
 
-    linked_output = {
-        'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen'])),
-        'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen_index'])),
-        'sample': dxpy.dxlink(generate_linked_dx_file(merged['sample'])),
-        'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep'])),
-        'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep_index']))
-    }
+    # Set output
+    output = {'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
+              'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['index'])),
+              'sample': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['sample'])),
+              'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
+              'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))}
 
-    for f in merged.values():
+    for f in output.values():
         if isinstance(f, Path) and f.exists():
             f.unlink()
 
-    return [linked_output]
+    return output
 
 
 def process_single_chunk(chunk_file: Path, chunk_index: int,

@@ -40,3 +40,4 @@ test/concat_coords.txt
 all_chunks_combined.txt
 chunking_log.txt
 *_chunks
+duplicates_only.txt
