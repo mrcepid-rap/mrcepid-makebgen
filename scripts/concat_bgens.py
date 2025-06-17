@@ -1,4 +1,5 @@
 import gzip
+import re
 from pathlib import Path
 from typing import Iterator, List, Dict, Union, Iterable, Any
 
@@ -42,12 +43,13 @@ def process_chunk_group(batch_index: int, chunk: List[Dict[str, str]],
 
     # chrom label is the same for all rows in the chunk
     # (assuming they are all from the same chromosome)
-    chrom_label = chunk[0]['chrom']
+    bgen_files = [row['bgen'] for row in chunk]
+    chrom_label = check_all_same_chrom(bgen_files)
 
     # create output files
-    out_bgen = Path(f"{chrom_label}_mergedchunk{batch_index}.bgen")
-    out_sample = Path(f"{chrom_label}_mergedchunk{batch_index}.sample")
-    out_vep = Path(f"{chrom_label}_mergedchunk{batch_index}.vep.tsv")
+    out_bgen = Path(f"{chrom_label}_mergedchunk_{batch_index}.bgen")
+    out_sample = Path(f"{chrom_label}_mergedchunk_{batch_index}.sample")
+    out_vep = Path(f"{chrom_label}_mergedchunk_{batch_index}.vep.tsv")
 
     # Assume you're inside the correct working directory in Docker
     input_bgens = ' '.join(f'-g /test/{bgen.name}' for bgen in files['bgen'])
@@ -112,3 +114,26 @@ def chunk_dict_reader(reader: Union[Iterable[Dict[str, Any]], Dict[str, Any]], c
             chunk = []
     if chunk:
         yield chunk
+
+
+def extract_chrom_from_filename(filename: str) -> str:
+    """
+    Extract the chromosome from a filename formatted as "<chromosome>_<rest_of_filename>".
+
+    :param filename: Filename from which to extract the chromosome.
+    :return: The extracted chromosome part of the filename.
+    """
+    return Path(filename).stem.split('_')[0]
+
+
+def check_all_same_chrom(file_list: List[str]) -> str:
+    """
+    Check if all files in the list belong to the same chromosome based on their filenames.
+    :param file_list: List of filenames to check.
+    :return: The chromosome name if all files are from the same chromosome.
+    """
+    chroms = {extract_chrom_from_filename(f) for f in file_list}
+    if len(chroms) != 1:
+        raise ValueError(f"Inconsistent chromosomes in chunk: {chroms}")
+    return chroms.pop()
+

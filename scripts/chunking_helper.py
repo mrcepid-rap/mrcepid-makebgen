@@ -246,7 +246,7 @@ def get_chunk_number(path: Path) -> int:
     return int(path.name.split('chunk')[-1])
 
 
-def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, output_path: Path):
+def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, output_path: str):
     """
     Main function to create BGEN chunk coordinates
 

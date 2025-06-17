@@ -15,30 +15,26 @@ test_data_dir = Path(__file__).parent / 'test_data'
         (
                 [
                     {
-                        'chrom': 'test_input1',
-                        'prefix': 'test_input1',
-                        'bgen': 'test_data/expected_output/test_input1.bgen',
-                        'index': 'test_data/expected_output/test_input1.bgen.bgi',
-                        'sample': 'test_data/expected_output/test_input1.sample',
-                        'vep': 'test_data/expected_output/test_input1.vep.tsv.gz',
-                        'vep_idx': 'test_data/expected_output/test_input1.vep.tsv.gz.tbi'
+                        'bgen': 'test_data/expected_output/chr1_test_input1.bgen',
+                        'index': 'test_data/expected_output/chr1_test_input1.bgen.bgi',
+                        'sample': 'test_data/expected_output/chr1_test_input1.sample',
+                        'vep': 'test_data/expected_output/chr1_test_input1.vep.tsv.gz',
+                        'vep_idx': 'test_data/expected_output/chr1_test_input1.vep.tsv.gz.tbi'
                     },
                     {
-                        'chrom': 'test_input2',
-                        'prefix': 'test_input2',
-                        'bgen': 'test_data/expected_output/test_input2.bgen',
-                        'index': 'test_data/expected_output/test_input2.bgen.bgi',
-                        'sample': 'test_data/expected_output/test_input2.sample',
-                        'vep': 'test_data/expected_output/test_input2.vep.tsv.gz',
-                        'vep_idx': 'test_data/expected_output/test_input2.vep.tsv.gz.tbi'
+                        'bgen': 'test_data/expected_output/chr1_test_input2.bgen',
+                        'index': 'test_data/expected_output/chr1_test_input2.bgen.bgi',
+                        'sample': 'test_data/expected_output/chr1_test_input2.sample',
+                        'vep': 'test_data/expected_output/chr1_test_input2.vep.tsv.gz',
+                        'vep_idx': 'test_data/expected_output/chr1_test_input2.vep.tsv.gz.tbi'
                     }
                 ],
                 {
-                    'bgen': 'test_input1_mergedchunk1.bgen',
-                    'bgen_index': 'test_input1_mergedchunk1.bgen.bgi',
-                    'sample': 'test_input1_mergedchunk1.sample',
-                    'vep': 'test_input1_mergedchunk1.vep.tsv.gz',
-                    'vep_index': 'test_input1_mergedchunk1.vep.tsv.gz.tbi'
+                    'bgen': 'chr1_test_input1_mergedchunk_1.bgen',
+                    'bgen_index': 'chr1_test_input1_mergedchunk_1.bgen.bgi',
+                    'sample': 'chr1_test_input1_mergedchunk_1.sample',
+                    'vep': 'chr1_test_input1_mergedchunk_1.vep.tsv.gz',
+                    'vep_index': 'chr1_test_input1_mergedchunk_1.vep.tsv.gz.tbi'
                 }
         )
     ]
