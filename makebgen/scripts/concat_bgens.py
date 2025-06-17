@@ -10,7 +10,7 @@ from general_utilities.job_management.command_executor import CommandExecutor, b
 CMD_EXEC = build_default_command_executor()
 
 
-def process_chunk_group(batch_index: int, chunk: List[Dict[str, str]],
+def process_chunk_group(batch_index: int, chunk: List[Dict[str, Union[str, Path, dict]]],
                         cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Path]:
     """
     Process a group of chunks:

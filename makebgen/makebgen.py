@@ -7,7 +7,7 @@
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
-
+from pathlib import Path
 import dxpy
 from general_utilities.association_resources import check_gzipped
 from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
@@ -17,9 +17,85 @@ from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 from makebgen.scripts.chunking_helper import chunking_helper
-from makebgen.scripts.concat_bgens import chunk_dict_reader, process_chunk_group
+from makebgen.scripts.concat_bgens import process_chunk_group
 
 LOGGER = MRCLogger().get_logger()
+
+
+def process_one_batch(batch: list, batch_index: int,
+                      make_bcf: bool, output_prefix: str) -> list:
+    """
+    A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
+    :param batch: A list of chunked files to process.
+    :param batch_index: An index for the batch, used in naming output files.
+    :param make_bcf: Should a concatenated BCF be made in addition to the BGEN?
+    :param output_prefix: The prefix for the output files.
+    :return: A list of dictionaries containing the output files for the batch.
+    """
+    LOGGER.info(f"Processing batch {batch_index} with {len(batch)} chunked files...")
+
+    merged_chunks = []
+
+    for index, chunk_file in enumerate(batch):
+        with check_gzipped(chunk_file) as coord_file:
+            coord_reader = csv.DictReader(coord_file, delimiter="\t")
+
+            thread_utility = ThreadUtility(
+                incrementor=100,
+                thread_factor=2,
+                error_message='bcf to bgen thread failed'
+            )
+
+            previous_vep_id = None
+            bgen_inputs = {}
+
+            for row in coord_reader:
+                thread_utility.launch_job(
+                    make_bgen_from_vcf,
+                    vcf_id=row['output_bcf'],
+                    vep_id=row['output_vep'],
+                    previous_vep_id=previous_vep_id,
+                    start=row['start'],
+                    make_bcf=make_bcf
+                )
+                previous_vep_id = row['output_vep']
+
+            for result in thread_utility:
+                bgen_inputs[result['vcfprefix']] = result['start']
+
+        final_files = make_final_bgen(bgen_inputs, f"{output_prefix}_{index}", make_bcf)
+
+        output = {
+            'bgen': final_files['bgen']['file'],
+            'bgen_index': final_files['bgen']['index'],
+            'sample': final_files['bgen']['sample'],
+            'vep': final_files['vep']['file'],
+            'vep_index': final_files['vep']['index']
+        }
+
+        if final_files['bcf']['file'] is not None:
+            output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
+            output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
+
+        merged_chunks.append(output)
+
+    # All 3 chunks done — now merge them
+    merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
+
+    # Upload and cleanup
+    linked_output = {
+        'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen'])),
+        'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen_index'])),
+        'sample': dxpy.dxlink(generate_linked_dx_file(merged['sample'])),
+        'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep'])),
+        'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep_index']))
+    }
+
+    for f in merged.values():
+        if isinstance(f, Path) and f.exists():
+            f.unlink()
+
+    return [linked_output]
 
 
 @dxpy.entry_point('main')
@@ -41,101 +117,47 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     """
 
     # start the file parser class and get the coordinates file
+    # Get coordinate and gene files
     coordinates = InputFileHandler(coordinate_file)
     coordinate_path = coordinates.get_file_handle()
 
-    # start the file parser class and get the gene dictionary file
-    gene_dict = InputFileHandler(gene_dict)
-    gene_dict_path = gene_dict.get_file_handle()
+    gene_dict_file = InputFileHandler(gene_dict)
+    gene_dict_path = gene_dict_file.get_file_handle()
 
-    # run the chunking script and save the output to a directory
-    chunked_files = chunking_helper(gene_dict=gene_dict_path, coordinate_path=coordinate_path,
-                                    chunk_size=3, output_path="chunked_coordinates")
+    # Run chunking and generate BGEN chunk files
+    chunked_files = chunking_helper(
+        gene_dict=gene_dict_path,
+        coordinate_path=coordinate_path,
+        chunk_size=3,
+        output_path="chunked_coordinates"
+    )
 
     batch_size = size_of_bgen
-    final_outputs = []
 
-    # Process files in batches
+    # Set up parallel execution of batches
+    batch_thread_utility = ThreadUtility(
+        incrementor=1,
+        thread_factor=3,  # Run 3 batches concurrently
+        error_message='Batch-level processing failed'
+    )
+
     for i in range(0, len(chunked_files), batch_size):
         batch = chunked_files[i:i + batch_size]
         batch_index = i // batch_size + 1
 
-        # Example: Print or run a command on each batch
-        print(f"Processing batch {i // batch_size + 1}: {[str(f) for f in batch]}")
+        batch_thread_utility.launch_job(
+            process_one_batch,
+            batch=batch,
+            batch_index=batch_index,
+            make_bcf=make_bcf,
+            output_prefix=output_prefix
+        )
 
-        # Get the processed coordinate file
-        total_bcf = 0
+    final_outputs = []
+    for batch_outputs in batch_thread_utility:
+        final_outputs.extend(batch_outputs)
 
-        # start the file parser class and get the coordinates file
-        coordinates = InputFileHandler(coordinate_file)
-        coordinate_path = coordinates.get_file_handle()
-
-        with check_gzipped(coordinate_path) as coord_file:
-            coord_file_reader = csv.DictReader(coord_file, delimiter="\t")
-
-            thread_utility = ThreadUtility(incrementor=100,
-                                           thread_factor=2,
-                                           error_message='A bcf to bgen thread failed')
-            previous_vep_id = None
-            for row in coord_file_reader:
-                total_bcf += 1
-                thread_utility.launch_job(make_bgen_from_vcf,
-                                          vcf_id=row['output_bcf'],
-                                          vep_id=row['output_vep'],
-                                          previous_vep_id=previous_vep_id,
-                                          start=row['start'],
-                                          make_bcf=make_bcf
-                                          )
-                previous_vep_id = row['output_vep']
-
-            # And gather the resulting futures which are returns of all bgens we need to concatenate:
-            bgen_prefixes = {}
-            for result in thread_utility:
-                bgen_prefixes[result['vcfprefix']] = result['start']
-
-        # Convert all input bcfs to bgen
-        LOGGER.info(f'Converting {total_bcf} bcf(s) to single bgen')
-
-        # Now mash all the bgen files together
-        LOGGER.info(f'Merging bgen files into {output_prefix}.bgen...')
-        final_files = make_final_bgen(bgen_prefixes, output_prefix, make_bcf)
-
-        # Set output
-        output = {'bgen': final_files['bgen']['file'],
-                  'index': final_files['bgen']['index'],
-                  'sample': final_files['bgen']['sample'],
-                  'vep': final_files['vep']['file'],
-                  'vep_idx': final_files['vep']['index']}
-
-        if final_files['bcf']['file'] is not None:
-            output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
-            output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
-
-        # Now mash all the small bgen files together into one large one
-        LOGGER.info(f'Merging 3 bgen files into a large BGEN...')
-
-        final_outputs = []
-
-        for chunk_index, chunk in enumerate(chunk_dict_reader(output, chunk_size=size_of_bgen), start=1):
-            # process the chunk group
-            merged = process_chunk_group(batch_index=batch_index, chunk=chunk)
-
-            linked_output = {
-                'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen'])),
-                'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen_index'])),
-                'sample': dxpy.dxlink(generate_linked_dx_file(merged['sample'])),
-                'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep'])),
-                'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep_index']))
-            }
-
-            # these are large files, so let's delete them now once they're uploaded
-            for f in merged.values():
-                if f.exists():
-                    f.unlink()
-
-            final_outputs.append(linked_output)
-
-    return final_outputs
+    return {"final_outputs": final_outputs}
 
 
 dxpy.run()
