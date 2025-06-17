@@ -8,6 +8,7 @@
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
 from pathlib import Path
+from typing import Dict
 
 import dxpy
 from general_utilities.association_resources import check_gzipped
@@ -18,13 +19,12 @@ from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 from makebgen.scripts.chunking_helper import chunking_helper
-from makebgen.scripts.concat_bgens import process_chunk_group
 
 LOGGER = MRCLogger().get_logger()
 
 
 def process_one_batch(batch: list, batch_index: int,
-                      make_bcf: bool, output_prefix: str) -> dict[str, dict]:
+                      make_bcf: bool, output_prefix: str) -> Dict[str, Dict]:
     """
     A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
     :param batch: A list of chunked files to process.
@@ -57,8 +57,9 @@ def process_one_batch(batch: list, batch_index: int,
         bgen_prefixes[result['vcfprefix']] = result['start']
 
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
-    merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}", make_bcf=make_bcf)
-    #merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
+    merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
+                             make_bcf=make_bcf)
+    # merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
 
     # Set output
     output = {'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
