@@ -128,6 +128,11 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
                 'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep_index']))
             }
 
+            # these are large files, so let's delete them now once they're uploaded
+            for f in merged.values():
+                if f.exists():
+                    f.unlink()
+
             final_outputs.append(linked_output)
 
     return final_outputs
