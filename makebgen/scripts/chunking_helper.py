@@ -261,6 +261,9 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
     coord_df = pd.read_csv(coordinate_path, sep='\t')
     gene_df = parse_gene_dict(gene_dict)
 
+    # remove duplicates (if they exist)
+    coord_df = coord_df.drop_duplicates(subset=["chrom", "start", "end", "vcf_prefix"], keep="first")
+
     chunk_size = chunk_size
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
