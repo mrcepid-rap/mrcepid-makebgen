@@ -137,7 +137,7 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     # Set up parallel execution of batches
     batch_thread_utility = ThreadUtility(
         incrementor=1,
-        thread_factor=3,  # Run 3 batches concurrently
+        thread_factor=1,  # Run 1 batch of 3 concurrently
         error_message='Batch-level processing failed'
     )
 
