@@ -134,28 +134,21 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
 
     batch_size = size_of_bgen
 
-    # Set up parallel execution of batches
-    batch_thread_utility = ThreadUtility(
-        incrementor=1,
-        thread_factor=1,  # Run 1 batch of 3 concurrently
-        error_message='Batch-level processing failed'
-    )
+    final_outputs = []
 
     for i in range(0, len(chunked_files), batch_size):
         batch = chunked_files[i:i + batch_size]
         batch_index = i // batch_size + 1
 
-        batch_thread_utility.launch_job(
-            process_one_batch,
+        LOGGER.info(f"Starting batch {batch_index}...")
+        batch_outputs = process_one_batch(
             batch=batch,
             batch_index=batch_index,
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
-
-    final_outputs = []
-    for batch_outputs in batch_thread_utility:
         final_outputs.extend(batch_outputs)
+        LOGGER.info(f"Finished batch {batch_index}.")
 
     return {"final_outputs": final_outputs}
 
