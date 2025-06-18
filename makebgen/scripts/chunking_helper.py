@@ -8,6 +8,7 @@ cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Union, Tuple, List, Dict
 
@@ -281,7 +282,13 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
     # also save all chunks combined into a single file
     chunked_df.to_csv("all_chunks_combined.txt", sep='\t', index=False)
 
-    output_files = sorted(Path(output_path).iterdir(), key=lambda p: int(p.name.split('chunk')[-1].replace('.txt', '')))
+    output_files = sorted(
+        [
+            p for p in Path(output_path).iterdir()
+            if re.fullmatch(r"chunk\d+\.txt", p.name)
+        ],
+        key=lambda p: int(re.search(r"\d+", p.name).group())
+    )
 
     return output_files
 
