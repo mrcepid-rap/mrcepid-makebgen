@@ -177,31 +177,23 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     batch_size = size_of_bgen
 
     final_outputs = []
+
     num_batches = (len(chunked_files) + batch_size - 1) // batch_size
     LOGGER.info(f"Total number of batches: {num_batches}")
-
-    batch_threads = ThreadUtility(
-        incrementor=1,
-        thread_factor=2,
-        error_message='batch-level processing failed'
-    )
 
     for i in range(0, len(chunked_files), batch_size):
         batch = chunked_files[i:i + batch_size]
         batch_index = i // batch_size + 1
 
-        LOGGER.info(f"Launching batch {batch_index} of {num_batches}...")
-        batch_threads.launch_job(
-            process_one_batch,
+        LOGGER.info(f"Starting batch {batch_index} of {num_batches}")
+        batch_outputs = process_one_batch(
             batch=batch,
             batch_index=batch_index,
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
-
-    # Wait for all batches to finish and collect outputs
-    for result in batch_threads:
-        final_outputs.extend(result)
+        final_outputs.extend(batch_outputs)
+        LOGGER.info(f"Finished batch {batch_index}")
 
     return {"final_outputs": final_outputs}
 
