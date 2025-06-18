@@ -59,7 +59,6 @@ def process_one_batch(batch: list, batch_index: int,
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
     merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
                              make_bcf=make_bcf)
-    # merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
 
     # Set output
     output = {'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
@@ -112,25 +111,33 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
             )
             previous_vep_id = row['output_vep']
 
-        for result in thread_utility:
-            bgen_inputs[result['vcfprefix']] = result['start']
+            results = list(thread_utility)
 
-    final_files = make_final_bgen(bgen_inputs, f"{output_prefix}_batch{batch_index}_chunk{chunk_index}", make_bcf)
+            bgen_inputs = {
+                result['vcfprefix']: result['start']
+                for result in results
+            }
 
-    output = {
-        'bgen': final_files['bgen']['file'],
-        'bgen_index': final_files['bgen']['index'],
-        'sample': final_files['bgen']['sample'],
-        'vep': final_files['vep']['file'],
-        'vep_index': final_files['vep']['index']
-    }
+        final_files = make_final_bgen(
+            bgen_inputs,
+            f"{output_prefix}_batch{batch_index}_chunk{chunk_index}",
+            make_bcf
+        )
 
-    if final_files['bcf']['file'] is not None:
-        output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
-        output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
+        output = {
+            'bgen': final_files['bgen']['file'],
+            'bgen_index': final_files['bgen']['index'],
+            'sample': final_files['bgen']['sample'],
+            'vep': final_files['vep']['file'],
+            'vep_index': final_files['vep']['index']
+        }
 
-    LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
-    return output
+        if final_files['bcf']['file'] is not None:
+            output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
+            output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
+
+        LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
+        return output
 
 
 @dxpy.entry_point('main')
