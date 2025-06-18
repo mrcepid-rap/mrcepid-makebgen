@@ -116,7 +116,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
         for result in thread_utility:
             bgen_inputs[result['vcfprefix']] = result['start']
 
-    final_files = make_final_bgen(bgen_inputs, f"{output_prefix}_batch{batch_index}_chunk{chunk_index}", make_bcf)
+    output_prefix = f"{output_prefix}_batch{batch_index}_chunk{chunk_index}"
+    final_files = make_final_bgen(bgen_inputs, output_prefix, make_bcf)
 
     output = {
         'bgen': final_files['bgen']['file'],
@@ -130,7 +131,7 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
         output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
         output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
 
-    output['vcfprefix'] = chunk_file.name
+    output['vcfprefix'] = output_prefix
     output['start'] = row['start']
 
     LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
