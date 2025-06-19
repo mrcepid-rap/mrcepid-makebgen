@@ -50,19 +50,16 @@ def process_one_batch(batch: list, batch_index: int,
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
-        print(chunk_file)
 
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
     bgen_prefixes = {}
     for result in chunk_threads:
-        print(result)
         bgen_prefixes[result['vcfprefix']] = result['start']
 
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
 
     merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
                              make_bcf=make_bcf)
-    # merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
 
     # Set output
     output = {'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
@@ -118,24 +115,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
         for result in thread_utility:
             bgen_inputs[result['vcfprefix']] = result['start']
 
-        # previous_vep_id = None
-        # bgen_inputs = {}
-        #
-        # for row in coord_reader:
-        #     result = make_bgen_from_vcf(
-        #         vcf_id=row['output_bcf'],
-        #         vep_id=row['output_vep'],
-        #         previous_vep_id=previous_vep_id,
-        #         start=row['start'],
-        #         make_bcf=make_bcf
-        #     )
-        #     previous_vep_id = row['output_vep']
-        #     bgen_inputs[result['vcfprefix']] = result['start']
-
     output_prefix = f"{output_prefix}_batch{batch_index}_chunk{chunk_index}"
     final_files = make_final_bgen(bgen_inputs, output_prefix, make_bcf)
-
-    print(final_files)
 
     output = {
         'bgen': final_files['bgen']['file'],
@@ -152,9 +133,13 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
     output['vcfprefix'] = output_prefix
     output['start'] = row['start']
 
-    print(output)
-
     LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
+
+    for result in thread_utility:
+        for f in result.values():
+            if isinstance(f, Path) and f.exists():
+                f.unlink()
+
     return output
 
 
