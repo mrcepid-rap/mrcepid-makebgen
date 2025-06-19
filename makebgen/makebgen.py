@@ -50,14 +50,16 @@ def process_one_batch(batch: list, batch_index: int,
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
+        print(chunk_file)
 
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
-    bgen_prefixes = {
-        result['vcfprefix']: result['start']
-        for result in chunk_threads
-    }
+    bgen_prefixes = {}
+    for result in chunk_threads:
+        print(result)
+        bgen_prefixes[result['vcfprefix']] = result['start']
 
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
+
     merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
                              make_bcf=make_bcf)
     # merged = process_chunk_group(batch_index=batch_index, chunk=merged_chunks)
@@ -95,7 +97,7 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
         thread_utility = ThreadUtility(
             incrementor=100,
-            thread_factor=2,
+            thread_factor=3,
             error_message='bcf to bgen thread failed'
         )
 
@@ -119,6 +121,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
     output_prefix = f"{output_prefix}_batch{batch_index}_chunk{chunk_index}"
     final_files = make_final_bgen(bgen_inputs, output_prefix, make_bcf)
 
+    print(final_files)
+
     output = {
         'bgen': final_files['bgen']['file'],
         'bgen_index': final_files['bgen']['index'],
@@ -133,6 +137,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
     output['vcfprefix'] = output_prefix
     output['start'] = row['start']
+
+    print(output)
 
     LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
     return output
