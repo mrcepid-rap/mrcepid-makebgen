@@ -93,8 +93,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
         coord_reader = csv.DictReader(coord_file, delimiter="\t")
 
         thread_utility = ThreadUtility(
-            incrementor=20,
-            thread_factor=3,
+            incrementor=20, # try 10?
+            thread_factor=4, # or 4?
             error_message='bcf to bgen thread failed'
         )
 
