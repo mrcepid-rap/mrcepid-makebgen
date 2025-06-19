@@ -35,15 +35,15 @@ def process_one_batch(batch: list, batch_index: int,
     """
     LOGGER.info(f"Processing batch {batch_index} with {len(batch)} chunked files...")
 
-    # chunk_threads = ThreadUtility(
-    #     incrementor=1,
-    #     thread_factor=1,
-    #     error_message='chunk-level bgen creation failed'
-    # )
+    chunk_threads = ThreadUtility(
+        incrementor=1,
+        thread_factor=3,
+        error_message='chunk-level bgen creation failed'
+    )
 
-    results = []
     for i, chunk_file in enumerate(batch):
-        result = process_single_chunk(
+        chunk_threads.launch_job(
+            process_single_chunk,
             chunk_file=chunk_file,
             chunk_index=i,
             batch_index=batch_index,
@@ -51,11 +51,10 @@ def process_one_batch(batch: list, batch_index: int,
             output_prefix=output_prefix
         )
         print(chunk_file)
-        results.append(result)
 
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
     bgen_prefixes = {}
-    for result in results:
+    for result in chunk_threads:
         print(result)
         bgen_prefixes[result['vcfprefix']] = result['start']
 
@@ -97,8 +96,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
         coord_reader = csv.DictReader(coord_file, delimiter="\t")
 
         thread_utility = ThreadUtility(
-            incrementor=100,
-            thread_factor=6,
+            incrementor=20,
+            thread_factor=3,
             error_message='bcf to bgen thread failed'
         )
 
@@ -118,6 +117,20 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
         for result in thread_utility:
             bgen_inputs[result['vcfprefix']] = result['start']
+
+        # previous_vep_id = None
+        # bgen_inputs = {}
+        #
+        # for row in coord_reader:
+        #     result = make_bgen_from_vcf(
+        #         vcf_id=row['output_bcf'],
+        #         vep_id=row['output_vep'],
+        #         previous_vep_id=previous_vep_id,
+        #         start=row['start'],
+        #         make_bcf=make_bcf
+        #     )
+        #     previous_vep_id = row['output_vep']
+        #     bgen_inputs[result['vcfprefix']] = result['start']
 
     output_prefix = f"{output_prefix}_batch{batch_index}_chunk{chunk_index}"
     final_files = make_final_bgen(bgen_inputs, output_prefix, make_bcf)
