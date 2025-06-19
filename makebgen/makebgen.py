@@ -37,7 +37,7 @@ def process_one_batch(batch: list, batch_index: int,
 
     chunk_threads = ThreadUtility(
         incrementor=1,
-        thread_factor=3,
+        thread_factor=2,
         error_message='chunk-level bgen creation failed'
     )
 
@@ -97,7 +97,7 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
         thread_utility = ThreadUtility(
             incrementor=100,
-            thread_factor=3,
+            thread_factor=1,
             error_message='bcf to bgen thread failed'
         )
 
