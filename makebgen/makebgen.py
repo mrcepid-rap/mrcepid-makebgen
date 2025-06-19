@@ -35,15 +35,15 @@ def process_one_batch(batch: list, batch_index: int,
     """
     LOGGER.info(f"Processing batch {batch_index} with {len(batch)} chunked files...")
 
-    chunk_threads = ThreadUtility(
-        incrementor=1,
-        thread_factor=2,
-        error_message='chunk-level bgen creation failed'
-    )
+    # chunk_threads = ThreadUtility(
+    #     incrementor=1,
+    #     thread_factor=1,
+    #     error_message='chunk-level bgen creation failed'
+    # )
 
+    results = []
     for i, chunk_file in enumerate(batch):
-        chunk_threads.launch_job(
-            process_single_chunk,
+        result = process_single_chunk(
             chunk_file=chunk_file,
             chunk_index=i,
             batch_index=batch_index,
@@ -51,10 +51,11 @@ def process_one_batch(batch: list, batch_index: int,
             output_prefix=output_prefix
         )
         print(chunk_file)
+        results.append(result)
 
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
     bgen_prefixes = {}
-    for result in chunk_threads:
+    for result in results:
         print(result)
         bgen_prefixes[result['vcfprefix']] = result['start']
 
@@ -97,7 +98,7 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
         thread_utility = ThreadUtility(
             incrementor=100,
-            thread_factor=1,
+            thread_factor=6,
             error_message='bcf to bgen thread failed'
         )
 
