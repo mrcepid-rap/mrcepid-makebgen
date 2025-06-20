@@ -8,7 +8,6 @@
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
 from pathlib import Path
-from typing import Any
 
 import dxpy
 from general_utilities.association_resources import check_gzipped
@@ -24,7 +23,7 @@ LOGGER = MRCLogger().get_logger()
 
 
 def process_one_batch(batch: list, batch_index: int,
-                      make_bcf: bool, output_prefix: str) -> list[Any]:
+                      make_bcf: bool, output_prefix: str) -> list:
     """
     A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
     :param batch: A list of chunked files to process.
