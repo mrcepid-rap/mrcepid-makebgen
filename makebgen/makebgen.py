@@ -8,7 +8,7 @@
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
 from pathlib import Path
-from typing import Dict
+from typing import Any
 
 import dxpy
 from general_utilities.association_resources import check_gzipped
@@ -24,7 +24,7 @@ LOGGER = MRCLogger().get_logger()
 
 
 def process_one_batch(batch: list, batch_index: int,
-                      make_bcf: bool, output_prefix: str) -> Dict[str, Dict]:
+                      make_bcf: bool, output_prefix: str) -> list[Any]:
     """
     A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
     :param batch: A list of chunked files to process.
@@ -52,40 +52,8 @@ def process_one_batch(batch: list, batch_index: int,
         )
 
     results_list = list(chunk_threads)
-
-    # And gather the resulting futures which are returns of all bgens we need to concatenate:
-    bgen_prefixes = {}
-    for result in results_list:
-        bgen_prefixes[result['vcfprefix']] = result['start']
-
-    LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
-
-    merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
-                             make_bcf=make_bcf)
-
-    # Set output
-    output = {'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
-              'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['index'])),
-              'sample': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['sample'])),
-              'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
-              'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))}
-
-    # Delete batch-level merged files now that they're linked in DNAnexus
-    for key in ['bgen', 'index', 'sample', 'vep', 'vep_idx']:
-        local_file = merged['bgen' if key == 'bgen' else key.replace('_idx', '')].get(
-            'file' if key != 'index' else 'index')
-        if isinstance(local_file, Path) and local_file.exists():
-            LOGGER.debug(f"Deleting batch-level file: {local_file}")
-            local_file.unlink()
-
-    if make_bcf and merged['bcf']['file'] is not None:
-        for key in ['file', 'index']:
-            local_file = merged['bcf'][key]
-            if isinstance(local_file, Path) and local_file.exists():
-                LOGGER.debug(f"Deleting batch-level BCF file: {local_file}")
-                local_file.unlink()
-
-    return output
+    LOGGER.info(f"All chunks done for batch {batch_index}.")
+    return results_list
 
 
 def process_single_chunk(chunk_file: Path, chunk_index: int,
@@ -106,8 +74,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
         coord_reader = csv.DictReader(coord_file, delimiter="\t")
 
         thread_utility = ThreadUtility(
-            incrementor=20, # try 10?
-            thread_factor=4, # or 4?
+            incrementor=20,  # try 10?
+            thread_factor=4,  # or 4?
             error_message='bcf to bgen thread failed'
         )
 
@@ -167,22 +135,23 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 @dxpy.entry_point('main')
 def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: str,
          size_of_bgen: int) -> dict:
-    """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
-    into a single .bgen file.
+    """
+    Main entry point into this applet. This function initiates the conversion of all bcf files
+    for a given chromosome into a single .bgen file.
 
     Coordinate file must have the following columns:
 
-        chrom   start   end     vcf_prefix      output_bcf      output_bcf_idx  output_vep      output_vep_idx
+        chrom   start   end     vcf_prefix      output_bcf      output_bcf_idx
+        output_vep      output_vep_idx
 
     :param output_prefix: Output prefix. Output file will be named <output_prefix>.bgen
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
     :param gene_dict: A file containing the gene dictionary to be used for chunking.
     :param size_of_bgen: The number of chunks to concatenate into a single bgen file.
-    :return: An output dictionary following DNANexus conventions.
+    :return: A dictionary with final DX file links.
     """
 
-    # start the file parser class and get the coordinates file
     # Get coordinate and gene files
     coordinates = InputFileHandler(coordinate_file)
     coordinate_path = coordinates.get_file_handle()
@@ -190,7 +159,7 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     gene_dict_file = InputFileHandler(gene_dict)
     gene_dict_path = gene_dict_file.get_file_handle()
 
-    # Run chunking and generate BGEN chunk files
+    # Chunk the input coordinates using the gene dictionary
     chunked_files = chunking_helper(
         gene_dict=gene_dict_path,
         coordinate_path=coordinate_path,
@@ -199,11 +168,10 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     )
 
     batch_size = size_of_bgen
-
-    final_outputs = []
-
     num_batches = (len(chunked_files) + batch_size - 1) // batch_size
     LOGGER.info(f"Total number of batches: {num_batches}")
+
+    all_chunk_results = []
 
     for i in range(0, len(chunked_files), batch_size):
         batch = chunked_files[i:i + batch_size]
@@ -216,10 +184,47 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
-        final_outputs.extend(batch_outputs)
+        all_chunk_results.extend(batch_outputs)
         LOGGER.info(f"Finished batch {batch_index}")
 
-    return {"final_outputs": final_outputs}
+    # Merge chunk-level BGENs into one final BGEN
+    bgen_prefixes = {
+        result['vcfprefix']: result['start']
+        for result in all_chunk_results
+    }
+
+    LOGGER.info("Merging all chunk-level BGENs into final output...")
+    merged = make_final_bgen(
+        bgen_prefixes=bgen_prefixes,
+        output_prefix=output_prefix,
+        make_bcf=make_bcf
+    )
+
+    # Link final outputs to DNAnexus
+    output = {
+        'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
+        'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['index'])),
+        'sample': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['sample'])),
+        'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
+        'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))
+    }
+
+    if make_bcf and merged['bcf']['file'] is not None:
+        output['bcf'] = dxpy.dxlink(generate_linked_dx_file(merged['bcf']['file']))
+        output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(merged['bcf']['index']))
+
+    # Delete intermediate chunk-level merged files
+    for result in all_chunk_results:
+        for key in ['bgen', 'bgen_index', 'sample', 'vep', 'vep_index']:
+            path = result.get(key)
+            if isinstance(path, Path) and path.exists():
+                try:
+                    LOGGER.debug(f"Deleting intermediate file: {path}")
+                    path.unlink()
+                except Exception as e:
+                    LOGGER.warning(f"Could not delete file {path}: {e}")
+
+    return {"final_outputs": output}
 
 
 dxpy.run()
