@@ -150,14 +150,16 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
     LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
 
-    # Delete original input files from coordinate file
+    # Delete all files with the same prefix as vcf_prefix
     with check_gzipped(chunk_file) as coord_file:
         coord_reader = csv.DictReader(coord_file, delimiter="\t")
         for row in coord_reader:
-            for key in ['output_bcf', 'output_bcf_idx', 'output_vep', 'output_vep_idx']:
-                f = Path(row[key])
-                if f.exists():
+            prefix = row['vcf_prefix']
+            for f in Path(".").glob(f"{prefix}*"):
+                try:
                     f.unlink()
+                except Exception as e:
+                    LOGGER.warning(f"Failed to delete file {f}: {e}")
 
     return output
 
