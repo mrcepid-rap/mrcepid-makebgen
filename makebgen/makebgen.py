@@ -51,9 +51,11 @@ def process_one_batch(batch: list, batch_index: int,
             output_prefix=output_prefix
         )
 
+    results_list = list(chunk_threads)
+
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
     bgen_prefixes = {}
-    for result in chunk_threads:
+    for result in results_list:
         bgen_prefixes[result['vcfprefix']] = result['start']
 
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
@@ -68,9 +70,20 @@ def process_one_batch(batch: list, batch_index: int,
               'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
               'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))}
 
-    for f in output.values():
-        if isinstance(f, Path) and f.exists():
-            f.unlink()
+    # Delete batch-level merged files now that they're linked in DNAnexus
+    for key in ['bgen', 'index', 'sample', 'vep', 'vep_idx']:
+        local_file = merged['bgen' if key == 'bgen' else key.replace('_idx', '')].get(
+            'file' if key != 'index' else 'index')
+        if isinstance(local_file, Path) and local_file.exists():
+            LOGGER.debug(f"Deleting batch-level file: {local_file}")
+            local_file.unlink()
+
+    if make_bcf and merged['bcf']['file'] is not None:
+        for key in ['file', 'index']:
+            local_file = merged['bcf'][key]
+            if isinstance(local_file, Path) and local_file.exists():
+                LOGGER.debug(f"Deleting batch-level BCF file: {local_file}")
+                local_file.unlink()
 
     return output
 
@@ -112,7 +125,9 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
             )
             previous_vep_id = row['output_vep']
 
-        for result in thread_utility:
+        results_list = list(thread_utility)
+
+        for result in results_list:
             bgen_inputs[result['vcfprefix']] = result['start']
 
     output_prefix = f"{output_prefix}_batch{batch_index}_chunk{chunk_index}"
@@ -135,10 +150,14 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
     LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
 
-    for result in thread_utility:
-        for f in result.values():
-            if isinstance(f, Path) and f.exists():
-                f.unlink()
+    # Delete original input files from coordinate file
+    with check_gzipped(chunk_file) as coord_file:
+        coord_reader = csv.DictReader(coord_file, delimiter="\t")
+        for row in coord_reader:
+            for key in ['output_bcf', 'output_bcf_idx', 'output_vep', 'output_vep_idx']:
+                f = Path(row[key])
+                if f.exists():
+                    f.unlink()
 
     return output
 
