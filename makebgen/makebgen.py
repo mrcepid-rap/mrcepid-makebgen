@@ -8,7 +8,6 @@
 #   http://autodoc.dnanexus.com/bindings/python/current/
 import csv
 from pathlib import Path
-from typing import Dict
 
 import dxpy
 from general_utilities.association_resources import check_gzipped
@@ -24,7 +23,7 @@ LOGGER = MRCLogger().get_logger()
 
 
 def process_one_batch(batch: list, batch_index: int,
-                      make_bcf: bool, output_prefix: str) -> Dict[str, Dict]:
+                      make_bcf: bool, output_prefix: str) -> dict[str, dict]:
     """
     A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
     :param batch: A list of chunked files to process.
@@ -63,19 +62,26 @@ def process_one_batch(batch: list, batch_index: int,
     merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
                              make_bcf=make_bcf)
 
-    # Set output
-    output = {'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
-              'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['index'])),
-              'sample': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['sample'])),
-              'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
-              'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))}
+    # Set output as a list of dxlinks to the final files
+    output = {
+        'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
+        'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['index'])),
+        'sample': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['sample'])),
+        'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
+        'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))
+    }
 
-    # Delete all chunk-level temporary files
-    for result in results_list:
-        for path_key in result:
-            if isinstance(result[path_key], Path) and result[path_key].exists():
-                LOGGER.debug(f"Deleting result file: {result[path_key]}")
-                result[path_key].unlink()
+    # Now that the final files are gone, delete all chunk-level temporary files
+    # Specify the suffix to delete
+    suffix = [".bgen", ".bgen.bgi", ".sample", ".vep.tsv.gz", ".vep.tsv.gz.tbi"]
+    current_directory = Path()
+    for file in current_directory.glob(f"*{suffix}"):
+        if file.is_file():
+            try:
+                file.unlink()
+                print(f"Deleted: {file}")
+            except Exception as e:
+                print(f"Failed to delete {file}: {e}")
 
     return output
 
@@ -95,11 +101,11 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
     LOGGER.info(f"Starting processing of chunk {chunk_index} in batch {batch_index}")
 
     with check_gzipped(chunk_file) as coord_file:
-        coord_reader = csv.DictReader(coord_file, delimiter="\t")
+        coord_reader = list(csv.DictReader(coord_file, delimiter="\t"))
 
         thread_utility = ThreadUtility(
-            incrementor=20,  # try 10?
-            thread_factor=4,  # or 4?
+            incrementor=20,
+            thread_factor=4,
             error_message='bcf to bgen thread failed'
         )
 
@@ -141,20 +147,6 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
     output['start'] = row['start']
 
     LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
-
-    # Delete only intermediate files with known extensions
-    with check_gzipped(chunk_file) as coord_file:
-        coord_reader = csv.DictReader(coord_file, delimiter="\t")
-        for row in coord_reader:
-            prefix = row['vcf_prefix']
-            for suffix in [".bcf", ".bcf.csi", ".vep.tsv.gz", ".vep.tsv.gz.tbi"]:
-                file = Path(f"{prefix}{suffix}")
-                if file.exists():
-                    try:
-                        file.unlink()
-                        LOGGER.debug(f"Deleted intermediate file: {file}")
-                    except Exception as e:
-                        LOGGER.warning(f"Failed to delete file {file}: {e}")
 
     return output
 
@@ -198,7 +190,14 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     num_batches = (len(chunked_files) + batch_size - 1) // batch_size
     LOGGER.info(f"Total number of batches: {num_batches}")
 
-    final_output = {}
+    final_output = {
+        'bgen': [],
+        'index': [],
+        'sample': [],
+        'vep': [],
+        'vep_idx': []
+    }
+
     for i in range(0, len(chunked_files), batch_size):
         batch = chunked_files[i:i + batch_size]
         batch_index = i // batch_size + 1
@@ -210,8 +209,13 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
-        for key, val in output.items():
-            final_output[f"{key}_{batch_index}"] = val
+
+        final_output['bgen'].append(output['bgen'])
+        final_output['index'].append(output['index'])
+        final_output['sample'].append(output['sample'])
+        final_output['vep'].append(output['vep'])
+        final_output['vep_idx'].append(output['vep_idx'])
+
         LOGGER.info(f"Finished batch {batch_index}")
 
     LOGGER.info(f"Finished processing all batches")
