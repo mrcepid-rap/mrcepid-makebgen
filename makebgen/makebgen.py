@@ -17,7 +17,7 @@ from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
-from makebgen.scripts.chunking_helper import chunking_helper
+from makebgen.chunker.chunking_helper import chunking_helper
 
 LOGGER = MRCLogger().get_logger()
 
@@ -153,7 +153,7 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
 
 @dxpy.entry_point('main')
 def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: str,
-         size_of_bgen: int) -> dict:
+         ideal_chunk_size: int) -> dict:
     """Main entry point into this applet. This function initiates the conversion of all bcf files for a given chromosome
     into a single .bgen file.
 
@@ -165,9 +165,12 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     :param coordinate_file: A file containing the coordinates of all bcf files to be processed.
     :param make_bcf: Should a concatenated bcf be made in addition to the bgen?
     :param gene_dict: A file containing the gene dictionary to be used for chunking.
-    :param size_of_bgen: The number of chunks to concatenate into a single bgen file.
+    :param ideal_chunk_size: The final size of the bgen file to be created. This will be used to structure the batches.
     :return: An output dictionary following DNANexus conventions.
     """
+    if ideal_chunk_size < 3:
+        raise ValueError("The size of the final BGEN files must be at least 3Mb in size. This is to ensure that we can"
+                         "find non-exonic regions to chunk the BGEN files correctly. ")
 
     # start the file parser class and get the coordinates file
     # Get coordinate and gene files
@@ -178,31 +181,29 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     gene_dict_path = gene_dict_file.get_file_handle()
 
     # Run chunking and generate BGEN chunk files
-    chunked_files = chunking_helper(
+    chunked_files, log_files = chunking_helper(
         gene_dict=gene_dict_path,
         coordinate_path=coordinate_path,
         chunk_size=3,
-        output_path="chunked_coordinates"
     )
 
-    batch_size = size_of_bgen
-
-    num_batches = (len(chunked_files) + batch_size - 1) // batch_size
-    LOGGER.info(f"Total number of batches: {num_batches}")
+    batch_size = -(-ideal_chunk_size // 3)
+    LOGGER.info(f"Total number of batches: {batch_size}")
 
     final_output = {
         'bgen': [],
         'index': [],
         'sample': [],
         'vep': [],
-        'vep_idx': []
+        'vep_idx': [],
+        'logs': log_files
     }
 
     for i in range(0, len(chunked_files), batch_size):
         batch = chunked_files[i:i + batch_size]
         batch_index = i // batch_size + 1
 
-        LOGGER.info(f"Starting batch {batch_index} of {num_batches}")
+        LOGGER.info(f"Starting batch {batch_index} of {batch_size}")
         output = process_one_batch(
             batch=batch,
             batch_index=batch_index,

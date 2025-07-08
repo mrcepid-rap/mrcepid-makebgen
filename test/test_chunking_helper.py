@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 from intervaltree import IntervalTree, Interval
 
-from makebgen.scripts.chunking_helper import build_interval_tree, parse_gene_dict, get_safe_chunk_ends, \
-    chunk_chromosome, is_position_within_gene, split_coordinates_file
+from makebgen.chunker.chunking_helper import build_interval_tree, parse_gene_dict, get_safe_chunk_ends, \
+    chunk_chromosome, is_position_within_gene, split_coordinates_file, find_next_safe_end
 
 # a bit of setting up
 test_data_dir = Path(__file__).parent / 'test_data'
@@ -462,3 +462,24 @@ def test_split_coordinates_file(input_data: pd.DataFrame, gene_df: pd.DataFrame,
             drop=True)
         expected_df = pd.DataFrame(expected)
         pd.testing.assert_frame_equal(result_subset, expected_df)
+
+
+@pytest.mark.parametrize(
+    "safe_chunk_ends, proposed_end, expected",
+    [
+        # Valid case: next safe end is 200
+        ([100, 200, 300], 250, 200),
+        # Valid case: next safe end is 300
+        ([100, 200, 300], 350, 300),
+        # Fail-safe: no safe end less than proposed_end
+        ([100, 200, 300], 100, None),
+        # Fail-safe: empty safe_chunk_ends
+        ([], 250, None),
+    ]
+)
+def test_find_next_safe_end(safe_chunk_ends, proposed_end, expected):
+    if expected is None:
+        with pytest.raises(RuntimeError, match=f"No safe chunk end found after {proposed_end}"):
+            find_next_safe_end(safe_chunk_ends, proposed_end)
+    else:
+        assert find_next_safe_end(safe_chunk_ends, proposed_end) == expected

@@ -4,14 +4,14 @@ be concatenated into a single BGEN file. Note that a key part of this script is 
 cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not overlapping with any gene.
 """
 
-# NOTE: Need to create an ENSEMBL gene dictionary JSON file that contains the genomic locations of all genes.
-
 import argparse
 import json
 from pathlib import Path
-from typing import Union, Tuple, List, Dict
+from typing import Union, Tuple, List, Dict, Any
 
+import dxpy
 import pandas as pd
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from intervaltree import IntervalTree
 
 
@@ -95,6 +95,21 @@ def get_safe_chunk_ends(chrom_df, gene_intervals):
     return safe_ends
 
 
+def find_next_safe_end(safe_chunk_ends: List[int], proposed_end: int) -> int:
+    """
+    Finds the next safe end position that is less than the proposed end.
+    To be used when the proposed end is within a gene.
+
+    :param safe_chunk_ends: List of safe chunk end positions.
+    :param proposed_end: The proposed end position to check against.
+    :return: The maximum safe end position that is less than the proposed end.
+    """
+    next_safe_ends = [end for end in safe_chunk_ends if end < proposed_end]
+    if not next_safe_ends:
+        raise RuntimeError(f"No safe chunk end found after {proposed_end}")
+    return max(next_safe_ends)
+
+
 def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, chunk_size_bp: int) -> Tuple[
     pd.DataFrame, List[Dict]]:
     """
@@ -139,8 +154,13 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
 
         # Set the proposed end to the maximum of the safe ends within the limit
         proposed_end = max(safe_within_limit)
-        # see if the proposed end is within a gene
+        # see if the proposed end is within a gene (it absolutely should not be)
         within_gene = is_position_within_gene(gene_tree, proposed_end)
+        # if we're within a gene, we need to adjust the next best chunk end
+        if within_gene:
+            # find the next safe end that is not within a gene
+            proposed_end = find_next_safe_end(safe_chunk_ends, proposed_end)
+            within_gene = is_position_within_gene(gene_tree, proposed_end)
         # calculate the chunk rows that fall within the proposed end
         chunk_rows = files_remaining[files_remaining['start'] <= proposed_end]
 
@@ -148,9 +168,15 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
         if len(chunk_rows) > 750:
             chunk_rows = chunk_rows.iloc[:750]
             proposed_end = chunk_rows['end'].max()
-            # add a check to ensure the proposed end is not within a gene
+            within_gene = is_position_within_gene(gene_tree, proposed_end)
             if within_gene:
-                raise RuntimeError(f"File limit reached but proposed_end {proposed_end} is within a gene.")
+                # find the next safe end that is not within a gene
+                proposed_end = find_next_safe_end(safe_chunk_ends, proposed_end)
+                within_gene = is_position_within_gene(gene_tree, proposed_end)
+
+        # add a check to ensure the proposed end is not within a gene (none of them should be)
+        if within_gene:
+            raise RuntimeError(f"File limit reached but proposed_end {proposed_end} is within a gene.")
 
         # Log info
         log_entry = {
@@ -246,14 +272,13 @@ def get_chunk_number(path: Path) -> int:
     return int(path.name.split('chunk')[-1])
 
 
-def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, output_path: str):
+def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> Tuple[List[Any], List[Dict]]:
     """
     Main function to create BGEN chunk coordinates
 
     :param gene_dict: Path to the JSON file containing gene dictionary.
     :param coordinate_path: Path to the input coordinate file.
     :param chunk_size: Size of each chunk in megabases.
-    :param output_path: Directory to save the chunked output files.
     :return: List of file paths for the chunked output files.
     """
 
@@ -264,8 +289,9 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
     # remove duplicates (if they exist)
     coord_df = coord_df.drop_duplicates(subset=["chrom", "start", "end", "vcf_prefix"], keep="first")
 
-    chunk_size = chunk_size
-    output_path = Path(output_path)
+    # chrom
+    unique_chrom = coord_df["chrom"].unique()[0]
+    output_path = Path(f"chunked_output_{unique_chrom}")
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Split the coordinates file into chunks
@@ -277,27 +303,30 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int, out
         chunk_df.to_csv(output_path / f"{chunk_label}.txt", sep='\t', index=False)
 
     # Save the log entries to a text file
-    pd.DataFrame(log_entries).to_csv("chunking_log.txt", sep='\t', index=False)
+    pd.DataFrame(log_entries).to_csv(f"chunking_log_{unique_chrom}.txt", sep='\t', index=False)
     # also save all chunks combined into a single file
-    chunked_df.to_csv("all_chunks_combined.txt", sep='\t', index=False)
+    chunked_df.to_csv(f"all_chunks_combined_{unique_chrom}.txt", sep='\t', index=False)
 
     output_files = sorted(Path(output_path).iterdir(), key=lambda p: int(p.name.split('chunk')[-1].replace('.txt', '')))
 
-    return output_files
+    # # we should upload the helper files for reference & safe-keeping
+    log_files = [dxpy.dxlink(generate_linked_dx_file(file=f"chunking_log_{unique_chrom}.txt", delete_on_upload=False)),
+                 dxpy.dxlink(generate_linked_dx_file(file=f"all_chunks_combined_{unique_chrom}.txt", delete_on_upload=False))]
+
+    return output_files, log_files
 
 
+## NOTE: delete the following lines when integrating into the main pipeline
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run BGEN chunking helper.")
     parser.add_argument("--gene_dict", required=True, help="Path to gene dictionary JSON")
     parser.add_argument("--coordinate_path", required=True, help="Path to coordinate TSV file")
     parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size in Mb")
-    parser.add_argument("--output_path", required=True, help="Path to output directory")
 
     args = parser.parse_args()
     files = chunking_helper(
         gene_dict=Path(args.gene_dict),
         coordinate_path=Path(args.coordinate_path),
-        chunk_size=args.chunk_size,
-        output_path=Path(args.output_path)
+        chunk_size=args.chunk_size
     )
-    print(f"Chunking complete. {len(files)} chunks written to {args.output_path}")
+    print(f"Chunking complete. Chunks written to chunked_outout")

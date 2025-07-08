@@ -12,7 +12,7 @@ makebgen/deduplication/__pycache__/
 makebgen/process_bgen/__pycache__/
 test/__pycache__/
 makebgen/helper_tools/__pycache__/
-makebgen/scripts/__pycache__/
+makebgen/chunker/__pycache__/
 
 # Poetry lock file
 poetry.lock
