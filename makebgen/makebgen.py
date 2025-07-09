@@ -13,13 +13,19 @@ import dxpy
 from general_utilities.association_resources import check_gzipped
 from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
+from general_utilities.job_management.subjob_utility import SubjobUtility, check_subjob_decorator, prep_current_image
 from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
+from numpy.ma.core import append
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 from makebgen.chunker.chunking_helper import chunking_helper
 
 LOGGER = MRCLogger().get_logger()
+
+#loaded_module = check_subjob_decorator()
+#if loaded_module:
+#    LOGGER.info(f'Loaded dxpy.entrypoint module {loaded_module}')
 
 
 def process_one_batch(batch: list, batch_index: int,
@@ -34,23 +40,44 @@ def process_one_batch(batch: list, batch_index: int,
     """
     LOGGER.info(f"Processing batch {batch_index} with {len(batch)} chunked files...")
 
-    chunk_threads = ThreadUtility(
-        incrementor=1,
-        thread_factor=3,
-        error_message='chunk-level bgen creation failed'
-    )
+    subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=True)
+
 
     for i, chunk_file in enumerate(batch):
-        chunk_threads.launch_job(
-            process_single_chunk,
-            chunk_file=chunk_file,
-            chunk_index=i,
-            batch_index=batch_index,
-            make_bcf=make_bcf,
-            output_prefix=output_prefix
+
+        chunk_file_link = generate_linked_dx_file(chunk_file)
+
+        subjob_launcher.launch_job(
+            function=process_single_chunk,
+            inputs={
+            'chunk_file':chunk_file_link,
+            'chunk_index':i,
+            'batch_index':batch_index,
+            'make_bcf':make_bcf,
+            'output_prefix':output_prefix
+            },
+            outputs=['bgen', 'index', 'sample', 'vep', 'vep_idx', 'vcfprefix', 'start'],
+            instance_type='mem3_ssd1_v2_x16',
+            name=f'makebgen_batch{batch_index}_chunk{i}',
         )
 
-    results_list = list(chunk_threads)
+    subjob_launcher.submit_queue()
+
+    bgen_chunks = []
+    for subjob_output in subjob_launcher:
+        # Each output is a dictionary with keys 'bgen', 'index', 'sample', 'vep', 'vep_idx'
+        # Collect each output dictionary into a list
+        bgen_chunks.append({
+            'bgen': subjob_output['bgen'],
+            'index': subjob_output['index'],
+            'sample': subjob_output['sample'],
+            'vep': subjob_output['vep'],
+            'vep_idx': subjob_output['vep_idx'],
+            'vcfprefix': subjob_output['vcfprefix'],
+            'start': subjob_output['start']
+        })
+
+    results_list = list(bgen_chunks)
 
     # And gather the resulting futures which are returns of all bgens we need to concatenate:
     bgen_prefixes = {}
@@ -85,8 +112,8 @@ def process_one_batch(batch: list, batch_index: int,
 
     return output
 
-
-def process_single_chunk(chunk_file: Path, chunk_index: int,
+@dxpy.entry_point('process_single_chunk')
+def process_single_chunk(chunk_file: dict, chunk_index: int,
                          batch_index: int, make_bcf: bool, output_prefix: str) -> dict:
     """
     Convert all VCFs in a chunk file to BGENs, then merge into one BGEN for that chunk.
@@ -99,6 +126,9 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
     :return: A dictionary containing the output files for the chunk.
     """
     LOGGER.info(f"Starting processing of chunk {chunk_index} in batch {batch_index}")
+
+    cmd_executor = prep_current_image([chunk_file])
+    chunk_file = InputFileHandler(chunk_file, download_now=True).get_file_handle()
 
     with check_gzipped(chunk_file) as coord_file:
         coord_reader = list(csv.DictReader(coord_file, delimiter="\t"))
@@ -119,7 +149,8 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
                 vep_id=row['output_vep'],
                 previous_vep_id=previous_vep_id,
                 start=row['start'],
-                make_bcf=make_bcf
+                make_bcf=make_bcf,
+                cmd_exec=cmd_executor
             )
             previous_vep_id = row['output_vep']
 
@@ -132,11 +163,11 @@ def process_single_chunk(chunk_file: Path, chunk_index: int,
     final_files = make_final_bgen(bgen_inputs, output_prefix, make_bcf)
 
     output = {
-        'bgen': final_files['bgen']['file'],
-        'bgen_index': final_files['bgen']['index'],
-        'sample': final_files['bgen']['sample'],
-        'vep': final_files['vep']['file'],
-        'vep_index': final_files['vep']['index']
+        'bgen': generate_linked_dx_file(final_files['bgen']['file']),
+        'bgen_index': generate_linked_dx_file(final_files['bgen']['index']),
+        'sample': generate_linked_dx_file(final_files['bgen']['sample']),
+        'vep': generate_linked_dx_file(final_files['vep']['file']),
+        'vep_index': generate_linked_dx_file(final_files['vep']['index'])
     }
 
     if final_files['bcf']['file'] is not None:
