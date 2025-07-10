@@ -310,38 +310,42 @@ def split_batch_files(batch: Path, max_rows: int) -> List[Path]:
     :return: List of file paths for the split files.
     """
     split_files = []
-    # Go through all the files in the batch
-    for file_path in batch:
-        # Open each TSV file in the batch for reading
-        with open(file_path, 'r', newline='') as infile:
-            reader = csv.reader(infile, delimiter='\t')
-            header = next(reader)  # Read the header row
-            rows = []
-            count = 0
-            file_index = 0
-            # Iterate through each row in the file
-            for row in reader:
-                rows.append(row)
-                count += 1
-                # If max_rows is reached, write to a new split file
-                if count == max_rows:
-                    out_path = f"{file_path}_split_{file_index}.tsv"
-                    with open(out_path, 'w', newline='') as outfile:
-                        writer = csv.writer(outfile, delimiter='\t')
-                        writer.writerow(header)
-                        writer.writerows(rows)
-                    split_files.append(Path(out_path))
-                    rows = []
-                    count = 0
-                    file_index += 1
-            # Write any remaining rows to a final split file
-            if rows:
-                out_path = f"{file_path}_split_{file_index}.tsv"
+    # Open the batch file and read its contents
+    with open(batch, 'r', newline='') as infile:
+        reader = csv.reader(infile, delimiter='\t')
+        # Read and store the header row
+        header = next(reader)
+        # Initialize variables to keep track of rows and file index
+        rows = []
+        count = 0
+        file_index = 0
+        # Iterate through each row in the file
+        for row in reader:
+            # append each row
+            rows.append(row)
+            count += 1
+            # If max_rows is reached, write to a new split file
+            if count == max_rows:
+                out_path = batch.parent / f"{batch.stem}_split_{file_index}.tsv"
                 with open(out_path, 'w', newline='') as outfile:
                     writer = csv.writer(outfile, delimiter='\t')
                     writer.writerow(header)
                     writer.writerows(rows)
+                # Append the output path to the list of split files
                 split_files.append(out_path)
+                # Reset the rows and count for the next split file
+                rows = []
+                count = 0
+                file_index += 1
+        # Write any remaining rows to a final split file
+        if rows:
+            out_path = batch.parent / f"{batch.stem}_split_{file_index}.tsv"
+            with open(out_path, 'w', newline='') as outfile:
+                writer = csv.writer(outfile, delimiter='\t')
+                writer.writerow(header)
+                writer.writerows(rows)
+            split_files.append(out_path)
+    # Return the list of split file paths
     return split_files
 
 

@@ -42,7 +42,7 @@ def process_one_batch(batch_file: Path, batch_index: int,
 
     # Split the batch file into smaller chunks if it exceeds the maximum number of rows
     # The maximum number of rows per chunk has to be 750 so that we can merge 1 BGEN
-    split_batch = split_batch_files(Path(batch_file), max_rows=750)
+    split_batch = split_batch_files(batch_file, max_rows=750)
 
     # Create a subjob launcher object
     subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=True)
