@@ -19,7 +19,7 @@ from general_utilities.mrc_logger import MRCLogger
 from numpy.ma.core import append
 
 from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
-from makebgen.chunker.chunking_helper import chunking_helper
+from makebgen.chunker.chunking_helper import chunking_helper, split_batch_files
 
 LOGGER = MRCLogger().get_logger()
 
@@ -27,23 +27,28 @@ LOGGER = MRCLogger().get_logger()
 #if loaded_module:
 #    LOGGER.info(f'Loaded dxpy.entrypoint module {loaded_module}')
 
-
-def process_one_batch(batch: list, batch_index: int,
+def process_one_batch(batch_file: Path, batch_index: int,
                       make_bcf: bool, output_prefix: str) -> dict:
     """
     A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
-    :param batch: A list of chunked files to process.
+    :param batch_file: A list of chunked files to process.
     :param batch_index: An index for the batch, used in naming output files.
     :param make_bcf: Should a concatenated BCF be made in addition to the BGEN?
     :param output_prefix: The prefix for the output files.
     :return: A list of dictionaries containing the output files for the batch.
     """
-    LOGGER.info(f"Processing batch {batch_index} with {len(batch)} chunked files...")
+    # Log the start of processing for this batch
+    LOGGER.info(f"Processing batch {batch_index} with {sum(1 for _ in open(batch_file)) - 1} chunked files...")
 
+    # Split the batch file into smaller chunks if it exceeds the maximum number of rows
+    # The maximum number of rows per chunk has to be 750 so that we can merge 1 BGEN
+    split_batch = split_batch_files(Path(batch_file), max_rows=750)
+
+    # Create a subjob launcher object
     subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=True)
 
-
-    for i, chunk_file in enumerate(batch):
+    # Launch subjobs for each chunk file in the batch
+    for i, chunk_file in enumerate(split_batch):
 
         chunk_file_link = generate_linked_dx_file(chunk_file)
 
@@ -215,11 +220,10 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     chunked_files, log_files = chunking_helper(
         gene_dict=gene_dict_path,
         coordinate_path=coordinate_path,
-        chunk_size=3,
+        chunk_size=ideal_chunk_size,
     )
 
-    batch_size = -(-ideal_chunk_size // 3)
-    LOGGER.info(f"Total number of batches: {batch_size}")
+    LOGGER.info(f"Total number of batches: {len(chunked_files)}")
 
     final_output = {
         'bgen': [],
@@ -230,14 +234,11 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
         'logs': log_files
     }
 
-    for i in range(0, len(chunked_files), batch_size):
-        batch = chunked_files[i:i + batch_size]
-        batch_index = i // batch_size + 1
-
-        LOGGER.info(f"Starting batch {batch_index} of {batch_size}")
+    for batch, file in chunked_files:
+        LOGGER.info(f"Starting batch {batch} of {len(chunked_files)}")
         output = process_one_batch(
-            batch=batch,
-            batch_index=batch_index,
+            batch=file,
+            batch_index=batch,
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
@@ -248,7 +249,7 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
         final_output['vep'].append(output['vep'])
         final_output['vep_idx'].append(output['vep_idx'])
 
-        LOGGER.info(f"Finished batch {batch_index}")
+        LOGGER.info(f"Finished batch {batch}")
 
     LOGGER.info(f"Finished processing all batches")
     return final_output

@@ -5,6 +5,7 @@ cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not
 """
 
 import argparse
+import csv
 import json
 from pathlib import Path
 from typing import Union, Tuple, List, Dict, Any
@@ -156,27 +157,11 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
         proposed_end = max(safe_within_limit)
         # see if the proposed end is within a gene (it absolutely should not be)
         within_gene = is_position_within_gene(gene_tree, proposed_end)
-        # if we're within a gene, we need to adjust the next best chunk end
-        if within_gene:
-            # find the next safe end that is not within a gene
-            proposed_end = find_next_safe_end(safe_chunk_ends, proposed_end)
-            within_gene = is_position_within_gene(gene_tree, proposed_end)
-        # calculate the chunk rows that fall within the proposed end
-        chunk_rows = files_remaining[files_remaining['start'] <= proposed_end]
-
-        # if the chunk rows exceed the file limit, adjust the proposed end
-        if len(chunk_rows) > 750:
-            chunk_rows = chunk_rows.iloc[:750]
-            proposed_end = chunk_rows['end'].max()
-            within_gene = is_position_within_gene(gene_tree, proposed_end)
-            if within_gene:
-                # find the next safe end that is not within a gene
-                proposed_end = find_next_safe_end(safe_chunk_ends, proposed_end)
-                within_gene = is_position_within_gene(gene_tree, proposed_end)
-
         # add a check to ensure the proposed end is not within a gene (none of them should be)
         if within_gene:
-            raise RuntimeError(f"File limit reached but proposed_end {proposed_end} is within a gene.")
+            raise RuntimeError(
+                f"File limit reached but proposed_end {proposed_end} is within a gene, something went wrong."
+                f"Did you set the chunk size too small?")
 
         # Log info
         log_entry = {
@@ -311,9 +296,53 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
 
     # # we should upload the helper files for reference & safe-keeping
     log_files = [dxpy.dxlink(generate_linked_dx_file(file=f"chunking_log_{unique_chrom}.txt", delete_on_upload=False)),
-                 dxpy.dxlink(generate_linked_dx_file(file=f"all_chunks_combined_{unique_chrom}.txt", delete_on_upload=False))]
+                 dxpy.dxlink(
+                     generate_linked_dx_file(file=f"all_chunks_combined_{unique_chrom}.txt", delete_on_upload=False))]
 
     return output_files, log_files
+
+
+def split_batch_files(batch: Path, max_rows: int) -> List[Path]:
+    """
+    Splits a batch of TSV files into smaller files with a maximum number of rows.
+    :param batch: List of file paths to TSV files.
+    :param max_rows: Maximum number of rows per split file.
+    :return: List of file paths for the split files.
+    """
+    split_files = []
+    # Go through all the files in the batch
+    for file_path in batch:
+        # Open each TSV file in the batch for reading
+        with open(file_path, 'r', newline='') as infile:
+            reader = csv.reader(infile, delimiter='\t')
+            header = next(reader)  # Read the header row
+            rows = []
+            count = 0
+            file_index = 0
+            # Iterate through each row in the file
+            for row in reader:
+                rows.append(row)
+                count += 1
+                # If max_rows is reached, write to a new split file
+                if count == max_rows:
+                    out_path = f"{file_path}_split_{file_index}.tsv"
+                    with open(out_path, 'w', newline='') as outfile:
+                        writer = csv.writer(outfile, delimiter='\t')
+                        writer.writerow(header)
+                        writer.writerows(rows)
+                    split_files.append(Path(out_path))
+                    rows = []
+                    count = 0
+                    file_index += 1
+            # Write any remaining rows to a final split file
+            if rows:
+                out_path = f"{file_path}_split_{file_index}.tsv"
+                with open(out_path, 'w', newline='') as outfile:
+                    writer = csv.writer(outfile, delimiter='\t')
+                    writer.writerow(header)
+                    writer.writerows(rows)
+                split_files.append(out_path)
+    return split_files
 
 
 ## NOTE: delete the following lines when integrating into the main pipeline
