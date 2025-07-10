@@ -162,6 +162,8 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
             raise RuntimeError(
                 f"File limit reached but proposed_end {proposed_end} is within a gene, something went wrong."
                 f"Did you set the chunk size too small?")
+        # calculate the chunk rows that fall within the proposed end
+        chunk_rows = files_remaining[files_remaining['start'] <= proposed_end]
 
         # Log info
         log_entry = {
