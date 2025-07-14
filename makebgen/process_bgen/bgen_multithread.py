@@ -111,7 +111,7 @@ def process_one_batch(batch_file: Path, batch_index: int,
                 'output_prefix': output_prefix
             },
             outputs=['bgen', 'index', 'sample', 'vep', 'vep_idx', 'vcfprefix', 'start'],
-            instance_type='mem3_ssd1_v2_x16',
+            instance_type='mem2_ssd1_v2_x16',
             name=f'makebgen_batch{batch_index}_chunk{i}',
         )
 
