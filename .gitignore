@@ -43,3 +43,4 @@ chunking_log.txt
 *_chunks
 duplicates_only.txt
 test/test_data/filtered_exclude_old.txt
+/test/final_dict_public.json

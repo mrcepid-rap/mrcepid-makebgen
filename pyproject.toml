@@ -18,7 +18,7 @@ dependencies = [
     "pandas==1.5.2",
     "pytest>=7.4.0,<8.0.0",
     "bgen>=1.7.3,<2.0.0",
-    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@main",
+    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@mv1.5.4",
     "intervaltree>=3.1.0",
     "pybiomart>=0.2.0",
 ]

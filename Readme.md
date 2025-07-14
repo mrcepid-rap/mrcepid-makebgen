@@ -204,7 +204,7 @@ https://github.com/mrcepid-rap
 Running this command is fairly straightforward using the DNANexus SDK toolkit:
 
 ```shell
-dx run mrcepid-makebgen --priority low --destination filtered_bgen/ -ichromosome='chr1' -icoordinate_file=file-1234567890ABCDEFGHIJKLMN
+dx run mrcepid-makebgen --priority low --destination filtered_bgen/ -icoordinate_file=file-1234567890ABCDEFGHIJKLMN -igene_dict=file-1234567890ABCDEFGHIJKLMN -ioutput_prefix="chr1_BGEN" -iideal_chunk_size=10
 ```
 
 Some notes here regarding execution:
