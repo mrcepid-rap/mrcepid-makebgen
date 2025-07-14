@@ -34,11 +34,12 @@
       "help": "Make a concatenated BGEN from multiple BGENs."
     },
     {
-      "name": "size_of_bgen",
+      "name": "ideal_chunk_size",
       "label": "How many BGEN files to concatenate?",
       "class": "int",
+      "optional": false,
       "default": 3,
-      "help": "How many BGEN files to concatenate? This is only used if concatenate_bgens is set to true. The default is 3, which means that the first 3 BGEN files will be concatenated into a single BGEN file."
+      "help": "What is the ideal final size for the BGEN file? Minimum is 3Mb"
     }
   ],
   "outputSpec": [
