@@ -6,185 +6,19 @@
 #
 # DNAnexus Python Bindings (dxpy) documentation:
 #   http://autodoc.dnanexus.com/bindings/python/current/
-import csv
-from pathlib import Path
 
 import dxpy
-from general_utilities.association_resources import check_gzipped
 from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
-from general_utilities.job_management.subjob_utility import SubjobUtility, check_subjob_decorator, prep_current_image
-from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
-from numpy.ma.core import append
 
-from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
-from makebgen.chunker.chunking_helper import chunking_helper, split_batch_files
+from makebgen.chunker.chunking_helper import chunking_helper
+from makebgen.process_bgen.bgen_multithread import process_one_batch
 
 LOGGER = MRCLogger().get_logger()
 
-#loaded_module = check_subjob_decorator()
-#if loaded_module:
+
 #    LOGGER.info(f'Loaded dxpy.entrypoint module {loaded_module}')
-
-def process_one_batch(batch_file: Path, batch_index: int,
-                      make_bcf: bool, output_prefix: str) -> dict:
-    """
-    A function to process a batch of chunked files, converting BCF files to BGEN format and merging them.
-    :param batch_file: A list of chunked files to process.
-    :param batch_index: An index for the batch, used in naming output files.
-    :param make_bcf: Should a concatenated BCF be made in addition to the BGEN?
-    :param output_prefix: The prefix for the output files.
-    :return: A list of dictionaries containing the output files for the batch.
-    """
-    # Log the start of processing for this batch
-    LOGGER.info(f"Processing batch {batch_index} with {sum(1 for _ in open(batch_file)) - 1} chunked files...")
-
-    # Split the batch file into smaller chunks if it exceeds the maximum number of rows
-    # The maximum number of rows per chunk has to be 750 so that we can merge 1 BGEN
-    split_batch = split_batch_files(batch_file, max_rows=750)
-
-    # Create a subjob launcher object
-    subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=True)
-
-    # Launch subjobs for each chunk file in the batch
-    for i, chunk_file in enumerate(split_batch):
-
-        chunk_file_link = generate_linked_dx_file(chunk_file)
-
-        subjob_launcher.launch_job(
-            function=process_single_chunk,
-            inputs={
-            'chunk_file':chunk_file_link,
-            'chunk_index':i,
-            'batch_index':batch_index,
-            'make_bcf':make_bcf,
-            'output_prefix':output_prefix
-            },
-            outputs=['bgen', 'index', 'sample', 'vep', 'vep_idx', 'vcfprefix', 'start'],
-            instance_type='mem3_ssd1_v2_x16',
-            name=f'makebgen_batch{batch_index}_chunk{i}',
-        )
-
-    subjob_launcher.submit_queue()
-
-    bgen_chunks = []
-    for subjob_output in subjob_launcher:
-        # Each output is a dictionary with keys 'bgen', 'index', 'sample', 'vep', 'vep_idx'
-        # Collect each output dictionary into a list
-        bgen_chunks.append({
-            'bgen': subjob_output['bgen'],
-            'index': subjob_output['index'],
-            'sample': subjob_output['sample'],
-            'vep': subjob_output['vep'],
-            'vep_idx': subjob_output['vep_idx'],
-            'vcfprefix': subjob_output['vcfprefix'],
-            'start': subjob_output['start']
-        })
-
-    results_list = list(bgen_chunks)
-
-    # And gather the resulting futures which are returns of all bgens we need to concatenate:
-    bgen_prefixes = {}
-    for result in results_list:
-        bgen_prefixes[result['vcfprefix']] = result['start']
-
-    LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
-
-    merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
-                             make_bcf=make_bcf)
-
-    # Set output as a list of dxlinks to the final files
-    output = {
-        'bgen': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['file'])),
-        'index': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['index'])),
-        'sample': dxpy.dxlink(generate_linked_dx_file(merged['bgen']['sample'])),
-        'vep': dxpy.dxlink(generate_linked_dx_file(merged['vep']['file'])),
-        'vep_idx': dxpy.dxlink(generate_linked_dx_file(merged['vep']['index']))
-    }
-
-    # Now that the final files are gone, delete all chunk-level temporary files
-    # Specify the suffix to delete
-    suffix = [".bgen", ".bgen.bgi", ".sample", ".vep.tsv.gz", ".vep.tsv.gz.tbi"]
-    current_directory = Path()
-    for file in current_directory.glob(f"*{suffix}"):
-        if file.is_file():
-            try:
-                file.unlink()
-                print(f"Deleted: {file}")
-            except Exception as e:
-                print(f"Failed to delete {file}: {e}")
-
-    return output
-
-@dxpy.entry_point('process_single_chunk')
-def process_single_chunk(chunk_file: dict, chunk_index: int,
-                         batch_index: int, make_bcf: bool, output_prefix: str) -> dict:
-    """
-    Convert all VCFs in a chunk file to BGENs, then merge into one BGEN for that chunk.
-
-    :param chunk_file: The file containing the chunk of coordinates to process.
-    :param chunk_index: The index of the chunk being processed.
-    :param batch_index: The index of the batch this chunk belongs to.
-    :param make_bcf: Should a concatenated BCF be made in addition to the BGEN?
-    :param output_prefix: The prefix for the output files.
-    :return: A dictionary containing the output files for the chunk.
-    """
-    LOGGER.info(f"Starting processing of chunk {chunk_index} in batch {batch_index}")
-
-    cmd_executor = prep_current_image([chunk_file])
-    chunk_file = InputFileHandler(chunk_file, download_now=True).get_file_handle()
-
-    with check_gzipped(chunk_file) as coord_file:
-        coord_reader = list(csv.DictReader(coord_file, delimiter="\t"))
-
-        thread_utility = ThreadUtility(
-            incrementor=20,
-            thread_factor=4,
-            error_message='bcf to bgen thread failed'
-        )
-
-        previous_vep_id = None
-        bgen_inputs = {}
-
-        for row in coord_reader:
-            thread_utility.launch_job(
-                make_bgen_from_vcf,
-                vcf_id=row['output_bcf'],
-                vep_id=row['output_vep'],
-                previous_vep_id=previous_vep_id,
-                start=row['start'],
-                make_bcf=make_bcf,
-                cmd_exec=cmd_executor
-            )
-            previous_vep_id = row['output_vep']
-
-        results_list = list(thread_utility)
-
-        for result in results_list:
-            bgen_inputs[result['vcfprefix']] = result['start']
-
-    output_prefix = f"{output_prefix}_batch{batch_index}_chunk{chunk_index}"
-    final_files = make_final_bgen(bgen_inputs, output_prefix, make_bcf)
-
-    output = {
-        'bgen': generate_linked_dx_file(final_files['bgen']['file']),
-        'bgen_index': generate_linked_dx_file(final_files['bgen']['index']),
-        'sample': generate_linked_dx_file(final_files['bgen']['sample']),
-        'vep': generate_linked_dx_file(final_files['vep']['file']),
-        'vep_index': generate_linked_dx_file(final_files['vep']['index'])
-    }
-
-    if final_files['bcf']['file'] is not None:
-        output['bcf'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['file']))
-        output['bcf_idx'] = dxpy.dxlink(generate_linked_dx_file(final_files['bcf']['index']))
-
-    output['vcfprefix'] = output_prefix
-    output['start'] = row['start']
-
-    LOGGER.info(f"Finished chunk {chunk_index} in batch {batch_index}")
-
-    return output
 
 
 @dxpy.entry_point('main')
@@ -237,17 +71,17 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     for batch, file in chunked_files:
         LOGGER.info(f"Starting batch {batch} of {len(chunked_files)}")
         output = process_one_batch(
-            batch=file,
+            batch_file=file,
             batch_index=batch,
             make_bcf=make_bcf,
             output_prefix=output_prefix
         )
 
-        final_output['bgen'].append(output['bgen'])
-        final_output['index'].append(output['index'])
-        final_output['sample'].append(output['sample'])
-        final_output['vep'].append(output['vep'])
-        final_output['vep_idx'].append(output['vep_idx'])
+        final_output['bgen'].append(dxpy.dxlink(generate_linked_dx_file(output['bgen'])))
+        final_output['index'].append(dxpy.dxlink(generate_linked_dx_file(output['index'])))
+        final_output['sample'].append(dxpy.dxlink(generate_linked_dx_file(output['sample'])))
+        final_output['vep'].append(dxpy.dxlink(generate_linked_dx_file(output['vep'])))
+        final_output['vep_idx'].append(dxpy.dxlink(generate_linked_dx_file(output['vep_idx'])))
 
         LOGGER.info(f"Finished batch {batch}")
 

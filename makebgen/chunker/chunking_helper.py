@@ -5,7 +5,6 @@ cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not
 """
 
 import argparse
-import csv
 import json
 from pathlib import Path
 from typing import Union, Tuple, List, Dict, Any
@@ -290,65 +289,20 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
         chunk_df.to_csv(output_path / f"{chunk_label}.txt", sep='\t', index=False)
 
     # Save the log entries to a text file
-    pd.DataFrame(log_entries).to_csv(f"chunking_log_{unique_chrom}.txt", sep='\t', index=False)
+    log_entires_path = f"chunking_log_{unique_chrom}.txt"
+    pd.DataFrame(log_entries).to_csv(log_entires_path, sep='\t', index=False)
     # also save all chunks combined into a single file
-    chunked_df.to_csv(f"all_chunks_combined_{unique_chrom}.txt", sep='\t', index=False)
+    chunks_combined_path = f"all_chunks_combined_{unique_chrom}.txt"
+    chunked_df.to_csv(chunks_combined_path, sep='\t', index=False)
 
     output_files = sorted(Path(output_path).iterdir(), key=lambda p: int(p.name.split('chunk')[-1].replace('.txt', '')))
 
     # # we should upload the helper files for reference & safe-keeping
-    log_files = [dxpy.dxlink(generate_linked_dx_file(file=f"chunking_log_{unique_chrom}.txt", delete_on_upload=False)),
+    log_files = [dxpy.dxlink(generate_linked_dx_file(file=log_entires_path, delete_on_upload=False)),
                  dxpy.dxlink(
-                     generate_linked_dx_file(file=f"all_chunks_combined_{unique_chrom}.txt", delete_on_upload=False))]
+                     generate_linked_dx_file(file=chunks_combined_path, delete_on_upload=False))]
 
     return output_files, log_files
-
-
-def split_batch_files(batch: Path, max_rows: int) -> List[Path]:
-    """
-    Splits a batch of TSV files into smaller files with a maximum number of rows.
-    :param batch: List of file paths to TSV files.
-    :param max_rows: Maximum number of rows per split file.
-    :return: List of file paths for the split files.
-    """
-    split_files = []
-    # Open the batch file and read its contents
-    with open(batch, 'r', newline='') as infile:
-        reader = csv.reader(infile, delimiter='\t')
-        # Read and store the header row
-        header = next(reader)
-        # Initialize variables to keep track of rows and file index
-        rows = []
-        count = 0
-        file_index = 0
-        # Iterate through each row in the file
-        for row in reader:
-            # append each row
-            rows.append(row)
-            count += 1
-            # If max_rows is reached, write to a new split file
-            if count == max_rows:
-                out_path = batch.parent / f"{batch.stem}_split_{file_index}.tsv"
-                with open(out_path, 'w', newline='') as outfile:
-                    writer = csv.writer(outfile, delimiter='\t')
-                    writer.writerow(header)
-                    writer.writerows(rows)
-                # Append the output path to the list of split files
-                split_files.append(out_path)
-                # Reset the rows and count for the next split file
-                rows = []
-                count = 0
-                file_index += 1
-        # Write any remaining rows to a final split file
-        if rows:
-            out_path = batch.parent / f"{batch.stem}_split_{file_index}.tsv"
-            with open(out_path, 'w', newline='') as outfile:
-                writer = csv.writer(outfile, delimiter='\t')
-                writer.writerow(header)
-                writer.writerows(rows)
-            split_files.append(out_path)
-    # Return the list of split file paths
-    return split_files
 
 
 ## NOTE: delete the following lines when integrating into the main pipeline

@@ -14,9 +14,10 @@ test/__pycache__/
 makebgen/helper_tools/__pycache__/
 makebgen/chunker/__pycache__/
 
-# Poetry lock file
-poetry.lock
+# Lock file & uv files
 uv.lock
+.python-version
+
 
 # Test logs
 test/dx_run.log

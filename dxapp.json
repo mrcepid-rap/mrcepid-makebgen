@@ -26,14 +26,14 @@
       "default": false,
       "help": "Make a concatenated BCF in addition to bgen. WARNING: This can lead to very long runtimes if enabled and is intended for testing only."
     },
-        {
+    {
       "name": "gene_dict",
       "label": "A dictionary containing gene coordinates needec for BGEN chunking",
       "class": "file",
       "optional": false,
       "help": "Make a concatenated BGEN from multiple BGENs."
     },
-        {
+    {
       "name": "size_of_bgen",
       "label": "How many BGEN files to concatenate?",
       "class": "int",

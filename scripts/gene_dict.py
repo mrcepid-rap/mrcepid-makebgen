@@ -7,19 +7,17 @@ Note that you need to generate this dictionary only once, and it should be store
 
 import json
 
-import pandas as pd
 from pybiomart import Server
-
-# Set pandas options to display all columns
-pd.set_option('display.max_columns', None)
 
 
 def main() -> None:
     """Main function to create a gene dictionary from Ensembl Biomart."""
     # Connect to Ensembl Biomart public server
+    print("Connecting to Ensembl Biomart public server...")
     server = Server(host='http://www.ensembl.org')
 
     # Get the human dataset
+    print("Fetching hsapiens_gene_ensembl from Ensembl Biomart...")
     dataset = server.marts['ENSEMBL_MART_ENSEMBL'].datasets['hsapiens_gene_ensembl']
 
     # Query required fields
@@ -37,9 +35,11 @@ def main() -> None:
     df = df.dropna(subset=['Transcript stable ID'])
 
     # Filter to standard chromosomes
+    print("Filtering to standard chromosomes...")
     df = df[df['Chromosome/scaffold name'].isin([str(i) for i in range(1, 23)] + ['X', 'Y', 'MT'])]
 
     # Build dictionary
+    print("Building gene dictionary...")
     final_dict = {}
     grouped = df.groupby('Gene name')
 
