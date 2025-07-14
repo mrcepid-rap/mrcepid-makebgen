@@ -104,7 +104,7 @@ def process_one_batch(batch_file: Path, batch_index: int,
         subjob_launcher.launch_job(
             function=process_single_chunk,
             inputs={
-                'chunk_file': chunk_file_link,
+                'chunk_file': {"$dnanexus_link": chunk_file_link.get_id()},
                 'chunk_index': i,
                 'batch_index': batch_index,
                 'make_bcf': make_bcf,
