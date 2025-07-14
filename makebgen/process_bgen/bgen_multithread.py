@@ -125,10 +125,10 @@ def process_one_batch(batch_file: Path, batch_index: int,
             # Collect each output dictionary into a list
             bgen_chunks.append({
                 'bgen': subjob_output['bgen'],
-                'index': subjob_output['index'],
+                'index': subjob_output['bgen_index'],
                 'sample': subjob_output['sample'],
                 'vep': subjob_output['vep'],
-                'vep_idx': subjob_output['vep_idx'],
+                'vep_idx': subjob_output['vep_index'],
                 'vcfprefix': subjob_output['vcfprefix'],
                 'start': subjob_output['start']
             })
