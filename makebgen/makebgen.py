@@ -68,7 +68,7 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
         'logs': log_files
     }
 
-    for batch, file in chunked_files:
+    for batch, file in enumerate(chunked_files):
         LOGGER.info(f"Starting batch {batch} of {len(chunked_files)}")
         output = process_one_batch(
             batch_file=file,
