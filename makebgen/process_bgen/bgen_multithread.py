@@ -110,7 +110,7 @@ def process_one_batch(batch_file: Path, batch_index: int,
                 'make_bcf': make_bcf,
                 'output_prefix': output_prefix
             },
-            outputs=['bgen', 'index', 'sample', 'vep', 'vep_idx', 'vcfprefix', 'start'],
+            outputs=['bgen', 'bgen_index', 'sample', 'vep', 'vep_index', 'vcfprefix', 'start'],
             instance_type='mem2_ssd1_v2_x16',
             name=f'makebgen_batch{batch_index}_chunk{i}',
         )
@@ -125,10 +125,10 @@ def process_one_batch(batch_file: Path, batch_index: int,
             # Collect each output dictionary into a list
             bgen_chunks.append({
                 'bgen': subjob_output['bgen'],
-                'index': subjob_output['bgen_index'],
+                'bgen_index': subjob_output['bgen_index'],
                 'sample': subjob_output['sample'],
                 'vep': subjob_output['vep'],
-                'vep_idx': subjob_output['vep_index'],
+                'vep_index': subjob_output['vep_index'],
                 'vcfprefix': subjob_output['vcfprefix'],
                 'start': subjob_output['start']
             })
