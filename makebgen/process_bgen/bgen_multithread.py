@@ -1,4 +1,5 @@
 import csv
+import subprocess
 from pathlib import Path
 from typing import List, Optional, Dict
 
@@ -118,6 +119,7 @@ def process_one_batch(batch_file: Path, batch_index: int,
     subjob_launcher.submit_queue()
 
     bgen_chunks = []
+    bgen_prefixes = {}
 
     for subjob_output in subjob_launcher:
         if subjob_output['bgen'] is not None:
@@ -132,44 +134,41 @@ def process_one_batch(batch_file: Path, batch_index: int,
                 'vcfprefix': subjob_output['vcfprefix'],
                 'start': subjob_output['start']
             })
+            bgen_prefixes[subjob_output['vcfprefix']] = subjob_output['start']
 
-        results_list = list(bgen_chunks)
+    # print what is inside the VM
+    subprocess.run("ls")
 
-        # And gather the resulting futures which are returns of all bgens we need to concatenate:
-        bgen_prefixes = {}
-        for result in results_list:
-            bgen_prefixes[result['vcfprefix']] = result['start']
+    LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
 
-        LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
+    merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
+                             make_bcf=make_bcf)
 
-        merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
-                                 make_bcf=make_bcf)
+    # Set output as a list of dxlinks to the final files
+    output = {
+        'bgen': merged['bgen']['file'],
+        'index': merged['bgen']['index'],
+        'sample': merged['bgen']['sample'],
+        'vep': merged['vep']['file'],
+        'vep_idx': merged['vep']['index']
+    }
 
-        # Set output as a list of dxlinks to the final files
-        output = {
-            'bgen': merged['bgen']['file'],
-            'index': merged['bgen']['index'],
-            'sample': merged['bgen']['sample'],
-            'vep': merged['vep']['file'],
-            'vep_idx': merged['vep']['index']
-        }
+    # Now that the final files are gone, delete all chunk-level temporary files
+    # Specify the suffix to delete
+    # Delete all chunk-level temporary files except the final output files
+    output_files = {Path(p) for p in output.values()}
+    suffixes = [".bgen", ".bgen.bgi", ".sample", ".vep.tsv.gz", ".vep.tsv.gz.tbi"]
+    current_directory = Path()
+    for suffix in suffixes:
+        for file in current_directory.glob(f"*{suffix}"):
+            if file.is_file() and file not in output_files:
+                try:
+                    file.unlink()
+                    print(f"Deleted: {file}")
+                except Exception as e:
+                    print(f"Failed to delete {file}: {e}")
 
-        # Now that the final files are gone, delete all chunk-level temporary files
-        # Specify the suffix to delete
-        # Delete all chunk-level temporary files except the final output files
-        output_files = {Path(p) for p in output.values()}
-        suffixes = [".bgen", ".bgen.bgi", ".sample", ".vep.tsv.gz", ".vep.tsv.gz.tbi"]
-        current_directory = Path()
-        for suffix in suffixes:
-            for file in current_directory.glob(f"*{suffix}"):
-                if file.is_file() and file not in output_files:
-                    try:
-                        file.unlink()
-                        print(f"Deleted: {file}")
-                    except Exception as e:
-                        print(f"Failed to delete {file}: {e}")
-
-        return output
+    return output
 
 
 @dxpy.entry_point('process_single_chunk')
@@ -194,8 +193,8 @@ def process_single_chunk(chunk_file: dict, chunk_index: int,
         coord_reader = list(csv.DictReader(coord_file, delimiter="\t"))
 
         thread_utility = ThreadUtility(
-            incrementor=20,
-            thread_factor=4,
+            incrementor=100,
+            thread_factor=2,
             error_message='bcf to bgen thread failed'
         )
 
