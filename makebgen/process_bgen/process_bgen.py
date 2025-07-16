@@ -166,11 +166,12 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     with concat_vep.open('w') as vep_writer:
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
+            vep_reader = None
             current_vep = Path(f'{bgen_prefix}.vep.tsv')
             if current_vep.exists():
                 vep_reader = current_vep.open("r")
             else:
-                current_vep = current_vep.with_suffix(".vep.tsv.gz")
+                current_vep = Path(f'{bgen_prefix}.vep.tsv.gz')
                 if current_vep.exists():
                     vep_reader = gzip.open(current_vep, "rt")
 
