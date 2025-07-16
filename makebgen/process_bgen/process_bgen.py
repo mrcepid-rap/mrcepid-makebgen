@@ -1,3 +1,4 @@
+import gzip
 import os
 from pathlib import Path
 from typing import Dict
@@ -166,7 +167,14 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
             current_vep = Path(f'{bgen_prefix}.vep.tsv')
-            with current_vep.open('r') as vep_reader:
+            if current_vep.exists():
+                vep_reader = current_vep.open("r")
+            else:
+                current_vep = current_vep.with_suffix(".vep.tsv.gz")
+                if current_vep.exists():
+                    vep_reader = gzip.open(current_vep, "rt")
+
+            with vep_reader:
                 for line_n, line in enumerate(vep_reader):
                     if file_n == 0 and line_n == 0:  # Only write header of first file
                         vep_writer.write(line)

@@ -136,9 +136,6 @@ def process_one_batch(batch_file: Path, batch_index: int,
             })
             bgen_prefixes[subjob_output['vcfprefix']] = subjob_output['start']
 
-    # print what is inside the VM
-    subprocess.run("ls")
-
     LOGGER.info(f"All chunks done for batch {batch_index}, merging...")
 
     merged = make_final_bgen(bgen_prefixes=bgen_prefixes, output_prefix=f"{output_prefix}_{batch_index}",
