@@ -46,7 +46,7 @@
     {
       "name": "bgen",
       "label": "Output bgen",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.bgen"
@@ -56,7 +56,7 @@
     {
       "name": "index",
       "label": "Output bgen index",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.bgen.bgi"
@@ -66,7 +66,7 @@
     {
       "name": "sample",
       "label": "Output bgen.sample",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.sample"
@@ -76,7 +76,7 @@
     {
       "name": "vep",
       "label": "Output vep annotations",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.tsv.gz"
@@ -86,7 +86,7 @@
     {
       "name": "vep_idx",
       "label": "Output vep annotations index",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.tsv.gz.tbi"
@@ -94,9 +94,19 @@
       "help": "Output vep annotations index"
     },
     {
+      "name": "logs",
+      "label": "Logs from the chunking process",
+      "class": "array:file",
+      "optional": false,
+      "patterns": [
+        "*.txt"
+      ],
+      "help": "Logs from the chunking process"
+    },
+    {
       "name": "bcf",
       "label": "Output bcf (if requested)",
-      "class": "file",
+      "class": "array:file",
       "optional": true,
       "patterns": [
         "*.bcf"
@@ -105,7 +115,7 @@
     {
       "name": "bcf_idx",
       "label": "Output bcf index (if requested)",
-      "class": "file",
+      "class": "array:file",
       "optional": true,
       "patterns": [
         "*.bcf.csi"
