@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+
+[project]
+name = "makebgen"
+version = "2.0.0"
+description = ""
+authors = [
+    { name = "Eugene Gardner", email = "eugene.gardner@mrc-epid.cam.ac.uk" },
+    { name = "Alish Palmos", email = "alish.palmos@insmed.com" }
+]
+readme = "Readme.md"
+requires-python = ">=3.8,<3.9"
+dependencies = [
+    "dxpy==0.346.0",
+    "importlib-resources==5.12.0",
+    "setuptools==60.2.0",
+    "pandas==1.5.2",
+    "pytest>=7.4.0,<8.0.0",
+    "bgen>=1.7.3,<2.0.0",
+    "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@feature/create_subjob_interface",
+    "intervaltree>=3.1.0",
+    "pybiomart>=0.2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/mrcepid-rap/mrcepid-makebgen"
+
+[tool.coverage.run]
+omit = [
+    "test/*",
+    "tests/*",
+]

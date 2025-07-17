@@ -3,14 +3,14 @@
   "title": "MakeBGEN",
   "summary": "Makes a sorted BGEN file from a list of vcfs",
   "dxapi": "1.0.0",
-  "version": "1.1.1",
+  "version": "2.0.0",
   "inputSpec": [
     {
-      "name": "chromosome",
-      "label": "Chromosome to merge",
+      "name": "output_prefix",
+      "label": "Output prefix",
       "class": "string",
       "optional": false,
-      "help": "Chromosome to merge. Must be provided to aid parallelization."
+      "help": "Only affects output name of bgen / bcf. File list must contain only files to merge."
     },
     {
       "name": "coordinate_file",
@@ -25,13 +25,28 @@
       "class": "boolean",
       "default": false,
       "help": "Make a concatenated BCF in addition to bgen. WARNING: This can lead to very long runtimes if enabled and is intended for testing only."
+    },
+    {
+      "name": "gene_dict",
+      "label": "A dictionary containing gene coordinates needec for BGEN chunking",
+      "class": "file",
+      "optional": false,
+      "help": "Make a concatenated BGEN from multiple BGENs."
+    },
+    {
+      "name": "ideal_chunk_size",
+      "label": "What would you like the final BGEN file size to be?",
+      "class": "int",
+      "optional": false,
+      "default": 3,
+      "help": "What is the ideal final size for the BGEN file? Minimum is 3Mb"
     }
   ],
   "outputSpec": [
     {
       "name": "bgen",
       "label": "Output bgen",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.bgen"
@@ -41,7 +56,7 @@
     {
       "name": "index",
       "label": "Output bgen index",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.bgen.bgi"
@@ -51,7 +66,7 @@
     {
       "name": "sample",
       "label": "Output bgen.sample",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.sample"
@@ -61,7 +76,7 @@
     {
       "name": "vep",
       "label": "Output vep annotations",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.tsv.gz"
@@ -71,7 +86,7 @@
     {
       "name": "vep_idx",
       "label": "Output vep annotations index",
-      "class": "file",
+      "class": "array:file",
       "optional": false,
       "patterns": [
         "*.tsv.gz.tbi"
@@ -79,9 +94,19 @@
       "help": "Output vep annotations index"
     },
     {
+      "name": "logs",
+      "label": "Logs from the chunking process",
+      "class": "array:file",
+      "optional": false,
+      "patterns": [
+        "*.txt"
+      ],
+      "help": "Logs from the chunking process"
+    },
+    {
       "name": "bcf",
       "label": "Output bcf (if requested)",
-      "class": "file",
+      "class": "array:file",
       "optional": true,
       "patterns": [
         "*.bcf"
@@ -90,7 +115,7 @@
     {
       "name": "bcf_idx",
       "label": "Output bcf index (if requested)",
-      "class": "file",
+      "class": "array:file",
       "optional": true,
       "patterns": [
         "*.bcf.csi"
@@ -105,21 +130,25 @@
   "runSpec": {
     "timeoutPolicy": {
       "*": {
-        "hours": 12
+        "hours": 24
       }
     },
     "interpreter": "python3",
-    "file": "src/mrcepid-makebgen.py",
+    "file": "makebgen/makebgen.py",
     "distribution": "Ubuntu",
     "release": "20.04",
     "version": "0",
     "execDepends": [
       {
-        "name": "general_utilities",
+        "name": "uv",
+        "package_manager": "pip"
+      },
+      {
+        "name": "makebgen",
         "package_manager": "git",
-        "url":  "https://github.com/mrcepid-rap/general_utilities.git",
-        "tag": "v1.2.2",
-        "build_commands": "pip3 install ."
+        "url": "https://github.com/mrcepid-rap/mrcepid-makebgen.git",
+        "tag": "2.0.0",
+        "build_commands": "uv pip install --system ."
       }
     ]
   },
