@@ -35,7 +35,7 @@
     },
     {
       "name": "ideal_chunk_size",
-      "label": "How many BGEN files to concatenate?",
+      "label": "What would you like the final BGEN file size to be?",
       "class": "int",
       "optional": false,
       "default": 3,
