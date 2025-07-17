@@ -12,6 +12,7 @@ import pandas as pd
 import pysam
 import pytest
 from general_utilities.association_resources import check_gzipped, replace_multi_suffix
+from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.job_management.command_executor import DockerMount, CommandExecutor
 
 from makebgen.deduplication.deduplication import (deduplicate_variants, remove_vep_duplicates,
@@ -95,7 +96,7 @@ def test_deduplicate_variants(temporary_path, coordinate_path):
     df.to_csv(test_data_dir / 'formatted_coords.txt', sep='\t')
     # make sure this file exists
     new_coords = test_data_dir / 'formatted_coords.txt'
-    assert new_coords
+    assert new_coords.exists(), f"File was not created: {new_coords}"
 
     # now let's read the new coords file into the dict reader
     # here we are simulating the run for make_bgen_from_vcf (which is where the
@@ -267,12 +268,14 @@ def test_remove_bcf_duplicates(temporary_path, query_string, vcf_file, vcf_prefi
     cmd_exec = CommandExecutor(docker_image='egardner413/mrcepid-burdentesting', docker_mounts=[test_mount])
 
     # Call the function
+    # Add test data prefix to the input data
+    vcf_path = InputFileHandler(vcf_path).get_file_handle()
     result = remove_bcf_duplicates(query_string, vcf_prefix, vcf_path, cmd_exec)
     # make sure the file exists
     assert result.exists()
 
     # subset the data from the newly created file
-    docker_command = f'docker run -v $(pwd):/test egardner413/mrcepid-burdentesting:latest bcftools query -f "%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\n" test/{result} > test_input.txt'
+    docker_command = f'docker run -v $(pwd):/test egardner413/mrcepid-burdentesting:latest bcftools query -f "%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\n" test/{result.name} > test_input.txt'
     subprocess.run(docker_command, shell=True, check=True)
 
     # read this dataframe in and make sure that our query string is no longer there

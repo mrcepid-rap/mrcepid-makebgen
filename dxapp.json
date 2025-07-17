@@ -3,7 +3,7 @@
   "title": "MakeBGEN",
   "summary": "Makes a sorted BGEN file from a list of vcfs",
   "dxapi": "1.0.0",
-  "version": "1.1.1",
+  "version": "2.0.0",
   "inputSpec": [
     {
       "name": "output_prefix",
@@ -147,7 +147,7 @@
         "name": "makebgen",
         "package_manager": "git",
         "url": "https://github.com/mrcepid-rap/mrcepid-makebgen.git",
-        "tag": "feature/HG-493-write-a-script-which-generates-input-chunks-for-makebgen",
+        "tag": "2.0.0",
         "build_commands": "uv pip install --system ."
       }
     ]
