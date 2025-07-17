@@ -59,18 +59,14 @@ def load_vep(vep_id: str) -> Optional[pd.DataFrame]:
     if vep_id is None:
         return None
     else:
-        vep_file = InputFileHandler(vep_id)
-        vep_id = vep_file.get_file_handle()
+        vep_id = InputFileHandler(vep_id).get_file_handle()
         # We stream the .vep annotation from dnanexus as it is faster for smaller files like this, and ensures that we don't
         # generate race conditions when loading the same file twice (which we do to check for duplicates...)
         #
         # Note to future devs – DO NOT remove gzip even though pandas can direct read gzip. It is not compatible with
         # dxpy.open_dxfile and will error out.
-        if isinstance(vep_file.get_file_type(), dxpy.DXFile):
-            current_df = pd.read_csv(gzip.open(dxpy.open_dxfile(vep_id, mode='rb'), mode='rt'), sep="\t",
-                                     index_col=False)
-        else:
-            current_df = pd.read_csv(gzip.open(Path(vep_id)), sep="\t", index_col=False)
+
+        current_df = pd.read_csv(gzip.open(vep_id), sep="\t", index_col=False)
 
         # This is legacy naming of the ID column and too difficult to refactor in the downstream pipeline
         current_df.rename(columns={'ID': 'varID'}, inplace=True)
@@ -238,9 +234,8 @@ def remove_bcf_duplicates(query_string: str, vcf_prefix: Path, vcf_path: Path,
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: Path to the deduplicated BCF file.
     """
-    print(vcf_path)
 
-    cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_path}'
+    cmd = f'bcftools view --threads 2 -e \'{query_string}\' -Ob -o /test/{vcf_prefix}.deduped.bcf /test/{vcf_path.name}'
     cmd_exec.run_cmd_on_docker(cmd)
 
     # And rename the deduped bcf to match the final one we want to output

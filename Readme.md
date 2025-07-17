@@ -7,7 +7,6 @@ https://documentation.dnanexus.com/.
 ### Table of Contents
 
 - [Introduction](#introduction)
-  * [Changelog](#changelog)
   * [Background](#background)
   * [Dependencies](#dependencies)
     + [Docker](#docker)
@@ -38,23 +37,6 @@ dx describe file-1234567890ABCDEFGHIJKLMN
 ```
 
 **Note:** This README pertains to data included as part of the DNANexus project "MRC - Variant Filtering" (project-G2XK5zjJXk83yZ598Z7BpGPk)
-
-### Changelog
-
-* v1.1.1
-  * Added `make_bcf` command-line option to also create a concatenated bcf. 
-    * **WARNING** This should be used with extreme caution as the file may be very large and take a long time to concatenate
-    * The default function is as before (bgen/VEP tsv only)
-    * This is intended primarily for debug purposes / special-case projects
-
-* v1.1.0
-  * Code modernisation including:
-    * Implementation of the [GeneralUtilities](https://github.com/mrcepid-rap/general_utilities) suite of helper functions/classes
-    * Removal of antiquated functions/methods in the code base
-    * Cleaning up code to be more in-line with PEP standards
-
-* v1.0.0
-  * Initial release of the public version of this app
 
 ### Background
 
@@ -101,7 +83,15 @@ to acquire other resources (e.g. wget). See the referenced Dockerfile for more i
 
 #### Resource Files
 
-This applet does not have any external dependencies.
+In order for the applet to safely decide how to create BGEN chunks (with chunk-ends being in non-exonic regions), we need to create a dictionary of the genome in 
+terms of gene coordinates. You can create this dictionary by running the following command from the root of the repository:
+
+```bash
+python scripts/gene_dict.py
+```
+
+This will create a file called `final_dict_public.json` in the home directory of the repository. You should upload this file to DNA Nexus, and use the file-dxid as part 
+of the applet for the `igene_dict` parameter.
 
 ## Methodology
 
@@ -137,11 +127,13 @@ As part of step (2), the corresponding VEP annotations are merged as a DataFrame
 
 ### Inputs
 
-| input           | description                                                                                                    |
-|-----------------|----------------------------------------------------------------------------------------------------------------|
-| chromosome      | a chromosome to be merged as part of this process. **MUST** be formated with the `chr` prefix (e.g. `chr1`)    |
-| coordinate_file | a gzipped .tsv file of file coordinates and DNANexus file-ids to merge. See below for the format of this file. |
-| make_bcf        | Make a bcf file with identical sites/genotypes to the output bgen? **[False]**                                 |
+| input           | description                                                                                                                           |
+|-----------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| output_prefix   | the prefix for output files                                                                                                           |
+| coordinate_file | a gzipped .tsv file of file coordinates and DNANexus file-ids to merge. See below for the format of this file.                        |
+| gene_dict       | a file containing a dictionary of gene coordinates for the genome. This is used to determine chunk ends. **[final_dict_public.json]** |
+| size_of_bgen    | desired size of the final merged BGEN file in megabases (e.g. 10 would indicate a final 10Mb BGEN file). 3Mb is the minimum.          |
+| make_bcf        | Make a bcf file with identical sites/genotypes to the output bgen? **[False]**                                                        |
 
 Each job from [mrcepid-filterbcf](https://github.com/mrcepid-rap/mrcepid-filterbcf) will produce a single coordinates file
 for the files processed in that job. The user must merge these files on their own to provide the required input for this 
@@ -212,7 +204,7 @@ https://github.com/mrcepid-rap
 Running this command is fairly straightforward using the DNANexus SDK toolkit:
 
 ```shell
-dx run mrcepid-makebgen --priority low --destination filtered_bgen/ -ichromosome='chr1' -icoordinate_file=file-1234567890ABCDEFGHIJKLMN
+dx run mrcepid-makebgen --priority low --destination filtered_bgen/ -icoordinate_file=file-1234567890ABCDEFGHIJKLMN -igene_dict=file-1234567890ABCDEFGHIJKLMN -ioutput_prefix="chr1_BGEN" -iideal_chunk_size=10
 ```
 
 Some notes here regarding execution:

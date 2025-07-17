@@ -1,0 +1,3 @@
+chrom	prefix	bgen	index	sample	vep	vep_idx
+test_input1	test_input1	test_data/expected_output/test_input1.bgen	test_data/expected_output/test_input1.bgen.bgi	test_data/expected_output/test_input1.sample	test_data/expected_output/test_input1.vep.tsv.gz	test_data/expected_output/test_input1.vep.tsv.gz.tbi
+test_input2	test_input2	test_data/expected_output/test_input2.bgen	test_data/expected_output/test_input2.bgen.bgi	test_data/expected_output/test_input2.sample	test_data/expected_output/test_input2.vep.tsv.gz	test_data/expected_output/test_input2.vep.tsv.gz.tbi

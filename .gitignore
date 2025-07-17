@@ -11,10 +11,13 @@ makebgen/__pycache__/
 makebgen/deduplication/__pycache__/
 makebgen/process_bgen/__pycache__/
 test/__pycache__/
+makebgen/helper_tools/__pycache__/
+makebgen/chunker/__pycache__/
 
-# Poetry lock file
-poetry.lock
+# Lock file & uv files
 uv.lock
+.python-version
+
 
 # Test logs
 test/dx_run.log
@@ -23,6 +26,21 @@ dx_run.log
 test/.coverage
 
 # Test files
-test/test_data/formatted_coords.txt!/uv.lock
 test/test_data/test_coordinates.txt
-test/test_coordinates_with_chunking.csv
+test/test_data/expected_output/test_coordinates_with_chunking.csv
+test/final_dict.json
+test/test_coords_v2.txt
+test/chunked_files
+test/test_data/chunked_files
+
+# Output files
+test/chunking_log_chr*
+test/test_data/*concatenated_output.txt
+final_dict.json
+test/concat_coords.txt
+all_chunks_combined.txt
+chunking_log.txt
+*_chunks
+duplicates_only.txt
+test/test_data/filtered_exclude_old.txt
+/test/final_dict_public.json

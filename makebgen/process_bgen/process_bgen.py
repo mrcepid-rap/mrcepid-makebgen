@@ -1,9 +1,11 @@
+import gzip
 import os
 from pathlib import Path
 from typing import Dict
 
 import dxpy
 from general_utilities.association_resources import replace_multi_suffix, bgzip_and_tabix
+from general_utilities.import_utils.file_handlers.input_file_handler import FileType
 from general_utilities.import_utils.import_lib import InputFileHandler
 from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
 
@@ -15,7 +17,6 @@ CMD_EXEC = build_default_command_executor()
 
 
 def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: int, make_bcf: bool,
-                       input_coordinates=InputFileHandler,
                        cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, int]:
     """Downloads the BCF/VEP for a single chunk and processes it.
 
@@ -27,7 +28,6 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
     :param previous_vep_id: A string dxid in the form of file-12345... pointing to the VEP annotations for the PREVIOUS VCF
     :param start: Start coordinate for this chunk
     :param make_bcf: Is a bcf being made for this chromosome?
-    :param input_coordinates: InputFileHandler object containing the coordinates filepath
     :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
     :return: A dictionary with key of processed prefix and value of the start coordinate for that bgen
     """
@@ -36,18 +36,21 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
     # try and convert this function to work with pysam & bgen modules if possible
 
     # download the file
-    vcf_path = vcf_id
+    vcf_path = InputFileHandler(vcf_id).get_file_handle()
 
     # Set names and DXPY files for bcf/vep file
     # Get a prefix name for all files, the 1st element of the suffixes is ALWAYS the chunk number.
-    vcf_prefix = replace_multi_suffix(vcf_path, vcf_path.suffixes[0]).stem
+    # Extract this part
+    suffix_from_name = "." + vcf_path.name.split(".")[1]  # e.g., '.chunk1'
+    # Apply the function
+    vcf_prefix = replace_multi_suffix(vcf_path, suffix_from_name).name
 
     # Download and remove duplicate sites (in both the VEP and BCF) due to erroneous multi-allelic processing by UKBB
     deduplicate_variants(vep_id=vep_id, previous_vep_id=previous_vep_id, vcf_prefix=vcf_prefix, vcf_path=vcf_path)
 
     # And convert processed bcf into bgenv1.2
     cmd = f'plink2 --threads 2 --memory 10000 ' \
-          f'--bcf /test/{vcf_path} ' \
+          f'--bcf /test/{vcf_path.name} ' \
           f'--export bgen-1.2 \'bits=\'8 \'ref-first\' ' \
           f'--vcf-half-call r ' \
           f'--out /test/{vcf_prefix} ' \
@@ -56,8 +59,8 @@ def make_bgen_from_vcf(vcf_id: Path, vep_id: str, previous_vep_id: str, start: i
     cmd_exec.run_cmd_on_docker(cmd)
 
     # Delete the original .bcf from the instance to save space (if we aren't making a bcf later)
-    # Note, for now let's only do this if we are running on DNA Nexus
-    if isinstance(input_coordinates.get_file_type(), dxpy.DXFile):
+    # Note, for now let's only do this if we are working on a VM (i.e. not locally)
+    if InputFileHandler(vcf_id).get_file_type() != FileType.LOCAL_PATH:
 
         if not make_bcf:
             vcf_path.unlink()
@@ -143,7 +146,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     # (i.e. ['test_input2', 'test_input1'])
     sorted_bgen_prefixes = [item[0] for item in sorted(
         bgen_prefixes.items(),
-        key=lambda item: item[1]
+        key=lambda item: int(item[1])
     )]
 
     # Create a correct sample file:
@@ -163,8 +166,16 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     with concat_vep.open('w') as vep_writer:
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
 
+            vep_reader = None
             current_vep = Path(f'{bgen_prefix}.vep.tsv')
-            with current_vep.open('r') as vep_reader:
+            if current_vep.exists():
+                vep_reader = current_vep.open("r")
+            else:
+                current_vep = Path(f'{bgen_prefix}.vep.tsv.gz')
+                if current_vep.exists():
+                    vep_reader = gzip.open(current_vep, "rt")
+
+            with vep_reader:
                 for line_n, line in enumerate(vep_reader):
                     if file_n == 0 and line_n == 0:  # Only write header of first file
                         vep_writer.write(line)

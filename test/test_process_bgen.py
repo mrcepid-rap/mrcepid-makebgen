@@ -138,29 +138,28 @@ def test_make_bgen_from_vcf(temporary_path, pipeline_data, formatted_coords_file
                 previous_vep_id=previous_vep_id,
                 start=row['start'],
                 make_bcf=make_bcf,
-                input_coordinates=input_coords,
-                cmd_exec=cmd_exec,
+                cmd_exec=cmd_exec
             )
             previous_vep_id = row['output_vep']
 
-        assert filecmp.cmp('test_input1.bgen',
+        assert filecmp.cmp('test_input1.chunk1.bgen',
                            test_data_dir / 'expected_output/test_input1.bgen',
                            shallow=False)
-        assert filecmp.cmp('test_input2.bgen',
+        assert filecmp.cmp('test_input2.chunk2.bgen',
                            test_data_dir / 'expected_output/test_input2.bgen',
                            shallow=False)
 
-    pipeline_data['test_input1.sample'] = temporary_path / 'test_input1.sample'
-    pipeline_data['test_input2.sample'] = temporary_path / 'test_input2.sample'
-    pipeline_data['test_input1.bgen'] = temporary_path / 'test_input1.bgen'
-    pipeline_data['test_input2.bgen'] = temporary_path / 'test_input2.bgen'
+    pipeline_data['test_input1.chunk1.sample'] = temporary_path / 'test_input1.chunk1.sample'
+    pipeline_data['test_input2.chunk2.sample'] = temporary_path / 'test_input2.chunk2.sample'
+    pipeline_data['test_input1.chunk1.bgen'] = temporary_path / 'test_input1.chunk1.bgen'
+    pipeline_data['test_input2.chunk2.bgen'] = temporary_path / 'test_input2.chunk2.bgen'
 
 
 @pytest.mark.parametrize(
     "sample_key",
     [
-        'test_input1.sample',
-        'test_input2.sample',
+        'test_input1.chunk1.sample',
+        'test_input2.chunk2.sample',
     ]
 )
 def test_correct_sample_file(temporary_path: Path, pipeline_data: dict, sample_key: str, tmp_path: Path):
@@ -194,8 +193,8 @@ def test_correct_sample_file(temporary_path: Path, pipeline_data: dict, sample_k
 @pytest.mark.parametrize(
     "bgen_prefixes, output_prefix, make_bcf",
     [
-        ({ 'test_input1': 100679512,
-           'test_input2': 36432507},
+        ({ 'test_input1.chunk1': 100679512,
+           'test_input2.chunk2': 36432507},
          'test_bgen',
          False)
     ]
@@ -215,10 +214,10 @@ def test_make_final_bgen(temporary_path, pipeline_data, bgen_prefixes, output_pr
 
     # first we need to retrieve the files from our pipeline_data object
     try:
-        bgen_file1 = pipeline_data['test_input1.bgen']
-        bgen_file2 = pipeline_data['test_input2.bgen']
-        sample_file1 = pipeline_data['test_input1.sample']
-        sample_file2 = pipeline_data['test_input2.sample']
+        bgen_file1 = pipeline_data['test_input1.chunk1.bgen']
+        bgen_file2 = pipeline_data['test_input2.chunk2.bgen']
+        sample_file1 = pipeline_data['test_input1.chunk1.sample']
+        sample_file2 = pipeline_data['test_input2.chunk2.sample']
     except KeyError:
         pytest.skip("BGEN files not available in pipeline_data from previous stage")
 
