@@ -4,15 +4,14 @@ be concatenated into a single BGEN file. Note that a key part of this script is 
 cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not overlapping with any gene.
 """
 
-import argparse
 import json
-from pathlib import Path
-from typing import Union, Tuple, List, Dict, Any
-
 import dxpy
 import pandas as pd
-from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
+from pathlib import Path
 from intervaltree import IntervalTree
+from typing import Union, Tuple, List, Dict, Any
+
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 
 
 def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:

@@ -147,7 +147,7 @@
         "name": "makebgen",
         "package_manager": "git",
         "url": "https://github.com/mrcepid-rap/mrcepid-makebgen.git",
-        "tag": "2.0.0",
+        "tag": "bugfix/improve_efficiency",
         "build_commands": "uv pip install --system ."
       }
     ]
