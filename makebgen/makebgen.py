@@ -8,12 +8,11 @@
 #   http://autodoc.dnanexus.com/bindings/python/current/
 
 import dxpy
-from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from general_utilities.import_utils.file_handlers.input_file_handler import InputFileHandler
 from general_utilities.mrc_logger import MRCLogger
 
 from makebgen.chunker.chunking_helper import chunking_helper
-from makebgen.process_bgen.bgen_multithread import process_one_batch
+from makebgen.process_bgen.bgen_multithread import process_batches, process_subjob_outputs
 
 LOGGER = MRCLogger().get_logger()
 
@@ -59,31 +58,11 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
 
     LOGGER.info(f"Total number of batches: {len(chunked_files)}")
 
-    final_output = {
-        'bgen': [],
-        'index': [],
-        'sample': [],
-        'vep': [],
-        'vep_idx': [],
-        'logs': log_files
-    }
+    batches = process_batches(chunked_files, make_bcf, output_prefix)
 
-    for batch, file in enumerate(chunked_files):
-        LOGGER.info(f"Starting batch {batch} of {len(chunked_files)}")
-        output = process_one_batch(
-            batch_file=file,
-            batch_index=batch,
-            make_bcf=make_bcf,
-            output_prefix=output_prefix
-        )
+    LOGGER.info(f"All chunks done, merging...")
 
-        final_output['bgen'].append(dxpy.dxlink(generate_linked_dx_file(output['bgen'])))
-        final_output['index'].append(dxpy.dxlink(generate_linked_dx_file(output['index'])))
-        final_output['sample'].append(dxpy.dxlink(generate_linked_dx_file(output['sample'])))
-        final_output['vep'].append(dxpy.dxlink(generate_linked_dx_file(output['vep'])))
-        final_output['vep_idx'].append(dxpy.dxlink(generate_linked_dx_file(output['vep_idx'])))
-
-        LOGGER.info(f"Finished batch {batch}")
+    final_output = process_subjob_outputs(batches, make_bcf, output_prefix)
 
     LOGGER.info(f"Finished processing all batches")
     return final_output
