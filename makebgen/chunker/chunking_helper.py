@@ -303,19 +303,3 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
                      generate_linked_dx_file(file=chunks_combined_path, delete_on_upload=False))]
 
     return output_files, log_files
-
-
-## NOTE: delete the following lines when integrating into the main pipeline
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run BGEN chunking helper.")
-    parser.add_argument("--gene_dict", required=True, help="Path to gene dictionary JSON")
-    parser.add_argument("--coordinate_path", required=True, help="Path to coordinate TSV file")
-    parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size in Mb")
-
-    args = parser.parse_args()
-    files = chunking_helper(
-        gene_dict=Path(args.gene_dict),
-        coordinate_path=Path(args.coordinate_path),
-        chunk_size=args.chunk_size
-    )
-    print(f"Chunking complete. Chunks written to chunked_outout")

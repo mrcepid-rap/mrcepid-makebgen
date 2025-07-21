@@ -132,7 +132,7 @@ def process_batches(chunked_files: List, make_bcf: bool, output_prefix: str) -> 
     return bgen_prefixes
 
 def process_subjob_outputs(bgen_chunks: Dict[int, List[Dict[str, Any]]], make_bcf: bool,
-                           output_prefix: str) -> dict[str, list[Any]]:
+                           output_prefix: str) -> Dict[str, List[Any]]:
 
     output = {
         'bgen': [],
