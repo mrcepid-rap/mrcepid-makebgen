@@ -63,6 +63,7 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     LOGGER.info(f"All chunks done, merging...")
 
     final_output = process_subjob_outputs(batches, make_bcf, output_prefix)
+    final_output['logs'] = log_files
 
     LOGGER.info(f"Finished processing all batches")
     return final_output
