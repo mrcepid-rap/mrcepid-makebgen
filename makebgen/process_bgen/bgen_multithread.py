@@ -282,7 +282,6 @@ def process_final_chunk(bgen: List[dict], bgen_index: List[dict], sample: List[d
     :return: A dictionary containing the output files for the batch.
     """
     LOGGER.info(f"Starting processing of batch {batch_index}.")
-    print(type(start[0]))
 
     batch_files = []
     for i in range(len(bgen)):
