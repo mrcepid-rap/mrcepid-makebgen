@@ -128,7 +128,8 @@ def make_final_bgen(bgen_prefixes: List[Dict[str, Any]], output_prefix: str, mak
         * 'file' - points to the final bgen, vep, and (if requested) bcf files respectively.
         * 'index' - points to the index of the final bgen, vep, and (if requested) bcf files respectively.
 
-    :param bgen_prefixes: a dictionary of form {vcfprefix: start_coordinate}
+    :param bgen_prefixes: a dictionary of form {vcfprefix: file_info} Where 'file_info' is a dictionary containing AT
+        LEAST a key for 'start' indicating the start position of this particular file.
     :param output_prefix: The prefix for the final bgen file. Will be named <output_prefix>.bgen.
     :param make_bcf: Should a bcf be made in addition to bgen? This can lead to VERY long runtimes if the number of
         sites is large.
