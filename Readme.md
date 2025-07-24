@@ -217,7 +217,6 @@ Some notes here regarding execution:
    will be named using a similar convention.
 
 3. I have set a sensible (and tested) default for compute resources on DNANexus that is baked into the json used for building the app (at `dxapp.json`) 
-   so setting an instance type is unnecessary. This current default is for a mem3_ssd1_v2_x16 instance (16 CPUs, 128 Gb RAM, 600Gb storage). This
-   instance prioritises more RAM over other types of instances. **Please note** that this applet is set up for the 
-   parallelisation of many files. To run one file, one needs much less memory. If necessary to adjust compute resources,
-   one can provide a flag like `--instance-type mem3_ssd1_v2_x8` to `dx run`.
+   so setting an instance type is unnecessary. This current default is for a mem1_ssd1_v2_x2 instance (2 CPUs, 4 Gb RAM, 50Gb storage). 
+   **Note**: This is a very small instance. This is by design as this applet uses subjob scheduling to run multiple jobs in parallel, and 
+   therefore the head node requires very little resource. It is currently not possible to change the instance types for subjobs on the command-line.
