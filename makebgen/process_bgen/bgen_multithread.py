@@ -295,7 +295,8 @@ def process_final_chunk(bgen: List[dict], bgen_index: List[dict], sample: List[d
             'start': int(start[i])  # We do this to be 200% sure...
         })
 
-    merged = make_final_bgen(bgen_prefixes=batch_files, output_prefix=f"{output_prefix}_{batch_index}",
+    clean_chrom_prefix = output_prefix.split('_')[0]
+    merged = make_final_bgen(bgen_prefixes=batch_files, output_prefix=f"{clean_chrom_prefix}_chunk{batch_index}",
                              make_bcf=make_bcf)
 
     output = {
