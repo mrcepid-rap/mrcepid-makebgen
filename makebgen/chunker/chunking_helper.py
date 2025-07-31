@@ -4,15 +4,14 @@ be concatenated into a single BGEN file. Note that a key part of this script is 
 cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not overlapping with any gene.
 """
 
-import argparse
 import json
-from pathlib import Path
-from typing import Union, Tuple, List, Dict, Any
-
 import dxpy
 import pandas as pd
-from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
+from pathlib import Path
 from intervaltree import IntervalTree
+from typing import Union, Tuple, List, Dict, Any
+
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 
 
 def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:
@@ -135,7 +134,7 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     chrom_max = chrom_df['end'].max()
     # get the safe chunk ends that do not overlap with genes
     safe_chunk_ends = get_safe_chunk_ends(chrom_df, gene_tree)
-    chunk_number = 1
+    chunk_number = 0
 
     while current_start <= chrom_max:
         # Calculate the ideal end position for the current chunk
@@ -303,19 +302,3 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
                      generate_linked_dx_file(file=chunks_combined_path, delete_on_upload=False))]
 
     return output_files, log_files
-
-
-## NOTE: delete the following lines when integrating into the main pipeline
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run BGEN chunking helper.")
-    parser.add_argument("--gene_dict", required=True, help="Path to gene dictionary JSON")
-    parser.add_argument("--coordinate_path", required=True, help="Path to coordinate TSV file")
-    parser.add_argument("--chunk_size", type=int, default=3, help="Chunk size in Mb")
-
-    args = parser.parse_args()
-    files = chunking_helper(
-        gene_dict=Path(args.gene_dict),
-        coordinate_path=Path(args.coordinate_path),
-        chunk_size=args.chunk_size
-    )
-    print(f"Chunking complete. Chunks written to chunked_outout")

@@ -21,6 +21,7 @@ dependencies = [
     "general-utilities @ git+https://github.com/mrcepid-rap/general_utilities.git@feature/create_subjob_interface",
     "intervaltree>=3.1.0",
     "pybiomart>=0.2.0",
+    "pytest-cov>=5.0.0",
 ]
 
 [project.urls]

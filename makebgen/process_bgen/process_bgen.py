@@ -1,9 +1,8 @@
 import gzip
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Any
 
-import dxpy
 from general_utilities.association_resources import replace_multi_suffix, bgzip_and_tabix
 from general_utilities.import_utils.file_handlers.input_file_handler import FileType
 from general_utilities.import_utils.import_lib import InputFileHandler
@@ -117,7 +116,7 @@ def correct_sample_file(template_sample: Path, output_prefix: str) -> Path:
     return final_sample
 
 
-def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
+def make_final_bgen(bgen_prefixes: List[Dict[str, Any]], output_prefix: str, make_bcf: bool,
                     cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
     """Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations into a single .tsv file.
 
@@ -129,7 +128,8 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
         * 'file' - points to the final bgen, vep, and (if requested) bcf files respectively.
         * 'index' - points to the index of the final bgen, vep, and (if requested) bcf files respectively.
 
-    :param bgen_prefixes: a dictionary of form {vcfprefix: start_coordinate}
+    :param bgen_prefixes: a dictionary of form {vcfprefix: file_info} Where 'file_info' is a dictionary containing AT
+        LEAST a key for 'start' indicating the start position of this particular file.
     :param output_prefix: The prefix for the final bgen file. Will be named <output_prefix>.bgen.
     :param make_bcf: Should a bcf be made in addition to bgen? This can lead to VERY long runtimes if the number of
         sites is large.
@@ -144,10 +144,7 @@ def make_final_bgen(bgen_prefixes: dict, output_prefix: str, make_bcf: bool,
     # sort the bgen files by the start position to make sure that they are truly in the correct order, but store
     # the original prefix for the final bgen file - note the test data should be sorted in the opposite order
     # (i.e. ['test_input2', 'test_input1'])
-    sorted_bgen_prefixes = [item[0] for item in sorted(
-        bgen_prefixes.items(),
-        key=lambda item: int(item[1])
-    )]
+    sorted_bgen_prefixes = [bgens['vcfprefix'] for bgens in sorted(bgen_prefixes, key=lambda x: x['start'])]
 
     # Create a correct sample file:
     final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)
