@@ -3,7 +3,7 @@
   "title": "MakeBGEN",
   "summary": "Makes a sorted BGEN file from a list of vcfs",
   "dxapi": "1.0.0",
-  "version": "2.0.0",
+  "version": "2.1.1",
   "inputSpec": [
     {
       "name": "output_prefix",
@@ -147,7 +147,7 @@
         "name": "makebgen",
         "package_manager": "git",
         "url": "https://github.com/mrcepid-rap/mrcepid-makebgen.git",
-        "tag": "bugfix/improve_efficiency",
+        "tag": "v2.1.1",
         "build_commands": "uv pip install --system ."
       }
     ]
