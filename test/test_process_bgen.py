@@ -193,8 +193,8 @@ def test_correct_sample_file(temporary_path: Path, pipeline_data: dict, sample_k
 @pytest.mark.parametrize(
     "bgen_prefixes, output_prefix, make_bcf",
     [
-        ({ 'test_input1.chunk1': 100679512,
-           'test_input2.chunk2': 36432507},
+        ([{'vcfprefix': 'test_input1.chunk1', 'start': 100679512},
+          {'vcfprefix': 'test_input2.chunk2', 'start': 36432507}],
          'test_bgen',
          False)
     ]
