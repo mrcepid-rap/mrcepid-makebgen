@@ -175,7 +175,7 @@ def process_subjob_outputs(bgen_chunks: Dict[int, List[Dict[str, Any]]], make_bc
             function=process_final_chunk,
             inputs=inputs,
             outputs=['bgen', 'bgen_index', 'sample', 'vep', 'vep_index'],
-            instance_type='mem2_ssd1_v2_x32',
+            instance_type='mem2_ssd2_v2_x32',
             name=f'makebgen_batch{batch_index}',
         )
 
