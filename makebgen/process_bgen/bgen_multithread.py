@@ -129,9 +129,9 @@ def process_batches(chunked_files: List, make_bcf: bool, output_prefix: str) -> 
 
     return bgen_prefixes
 
+
 def process_subjob_outputs(bgen_chunks: Dict[int, List[Dict[str, Any]]], make_bcf: bool,
                            output_prefix: str) -> Dict[str, List[Any]]:
-
     """Collect batches of merged files from :func:`process_batches` and merge them into final BGEN files. This is
     necessary as the `cat-bgen` command can only handle ≤750 files at a time.
 
@@ -159,7 +159,15 @@ def process_subjob_outputs(bgen_chunks: Dict[int, List[Dict[str, Any]]], make_bc
     subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=False)
 
     for batch_index, batch_files in bgen_chunks.items():
+
         LOGGER.info(f"Processing batch {batch_index} with {len(batch_files)} chunk files...")
+
+        # Count total input files across all batches and # determine instance type based on the number of files
+        instance_type = 'mem2_ssd1_v2_x32'
+        if len(batch_files) > 2000:
+            LOGGER.info(
+                f"Increasing instance type to mem3_ssd3_x12 for batch {batch_index} due to high number of files: {len(batch_files)}.")
+            instance_type = 'mem3_ssd3_x12'
 
         prefixes = ['bgen', 'bgen_index', 'sample', 'vep', 'vep_index', 'vcfprefix', 'start']
         inputs = {prefix: [] for prefix in prefixes}
@@ -175,7 +183,7 @@ def process_subjob_outputs(bgen_chunks: Dict[int, List[Dict[str, Any]]], make_bc
             function=process_final_chunk,
             inputs=inputs,
             outputs=['bgen', 'bgen_index', 'sample', 'vep', 'vep_index'],
-            instance_type='mem2_ssd1_v2_x32',
+            instance_type=instance_type,
             name=f'makebgen_batch{batch_index}',
         )
 
@@ -261,8 +269,10 @@ def process_single_chunk(chunk_file: dict, chunk_index: int,
 
     return output
 
+
 @dxpy.entry_point('process_final_chunk')
-def process_final_chunk(bgen: List[dict], bgen_index: List[dict], sample: List[dict], vep: List[dict], vep_index: List[dict],
+def process_final_chunk(bgen: List[dict], bgen_index: List[dict], sample: List[dict], vep: List[dict],
+                        vep_index: List[dict],
                         vcfprefix: List[str], start: List[int],
                         batch_index: int, make_bcf: bool, output_prefix: str) -> dict:
     """Convert all VCFs in a chunk file to BGENs, then merge into one BGEN for that batch.
