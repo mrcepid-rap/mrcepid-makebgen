@@ -164,7 +164,7 @@ def process_subjob_outputs(bgen_chunks: Dict[int, List[Dict[str, Any]]], make_bc
 
         # Count total input files across all batches and # determine instance type based on the number of files
         instance_type = 'mem2_ssd1_v2_x32'
-        if len(batch_files) > 2000:
+        if len(batch_files) > 3:
             LOGGER.info(
                 f"Increasing instance type to mem3_ssd3_x12 for batch {batch_index} due to high number of files: {len(batch_files)}.")
             instance_type = 'mem3_ssd3_x12'
