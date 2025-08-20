@@ -66,6 +66,27 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     final_output['logs'] = log_files
 
     LOGGER.info(f"Finished processing all batches")
+
+    # SET THE APP PERMISSIONS WHEN BUILDING THE APPLET TO ALLOW UPLOADS
+    # # get the job ID for the current job
+    # job_id = dxpy.JOB_ID
+    # # get the output destination of the current job
+    # job_details = dxpy.describe(job_id)
+    # # find input for the 'folder' regex
+    # output_folder = job_details['folder']
+    # # get the project id
+    # project_id = job_details['project']
+    # # upload each file in final_output to the output folder
+    # for key, value in final_output.items():
+    #     for file_path in value:
+    #         dxpy.upload_local_file(
+    #             filename=file_path,
+    #             project=project_id,
+    #             folder=output_folder,
+    #             parents=True
+    #         )
+
+
     return final_output
 
 

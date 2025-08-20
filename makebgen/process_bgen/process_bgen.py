@@ -150,15 +150,18 @@ def make_final_bgen(bgen_prefixes: List[Dict[str, Any]], output_prefix: str, mak
     final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)
 
     # Create a command line for concatenating bgen files and execute
+    print('STARTING BGEN CONCATENATION')
     cmd = ' '.join([f'-g /test/{file}.bgen' for file in sorted_bgen_prefixes])
     cmd = f'cat-bgen {cmd} -og /test/{final_bgen}'
     cmd_exec.run_cmd_on_docker(cmd)
 
     # And index the bgen for random query later
+    print('STARTING BGEN INDEXING')
     cmd = f'bgenix -index -g /test/{final_bgen}'
     cmd_exec.run_cmd_on_docker(cmd)
 
     # Collect & concat VEP annotations at this time
+    print('STARTING VEP CONCATENATION')
     concat_vep = Path(f'{output_prefix}.vep.tsv')
     with concat_vep.open('w') as vep_writer:
         for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
@@ -181,6 +184,7 @@ def make_final_bgen(bgen_prefixes: List[Dict[str, Any]], output_prefix: str, mak
 
         current_vep.unlink()
 
+    print('STARTING BZIP AND TABIX INDEXING OF VEP ANNOTATIONS')
     # bgzip and tabix index the resulting annotations
     final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2)
 
