@@ -3,10 +3,13 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any
 
+import dxpy
 from general_utilities.association_resources import replace_multi_suffix, bgzip_and_tabix
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
 from general_utilities.import_utils.file_handlers.input_file_handler import FileType
 from general_utilities.import_utils.import_lib import InputFileHandler
 from general_utilities.job_management.command_executor import CommandExecutor, build_default_command_executor
+from general_utilities.job_management.subjob_utility import SubjobUtility, prep_current_image
 
 from makebgen.deduplication.deduplication import deduplicate_variants
 
@@ -207,3 +210,133 @@ def make_final_bgen(bgen_prefixes: List[Dict[str, Any]], output_prefix: str, mak
     return {'bgen': {'file': final_bgen, 'index': final_bgen_idx, 'sample': final_sample},
             'vep': {'file': final_vep, 'index': final_vep_idx},
             'bcf': {'file': final_bcf, 'index': final_bcf_idx}}
+
+
+def make_final_bgen_chunk(bgen_prefixes: List[Dict[str, Any]], output_prefix: str, make_bcf: bool,
+                          cmd_exec: CommandExecutor = CMD_EXEC) -> Dict[str, Dict[str, Path]]:
+    """Concatenate the final per-chromosome bgen file while processing the .vep.gz annotations into a single .tsv file.
+
+    VEP annotation concatenation ASSUMES that file prefixes are sorted by coordinate. This is a safe assumption as the
+    previous steps in the pipeline should ensure coordinate sorted input.
+
+    The output format of this method is a named dictionary wuth three keys, 'bgen', 'vep', and 'bcf' each containing a
+    dictionary with keys:
+        * 'file' - points to the final bgen, vep, and (if requested) bcf files respectively.
+        * 'index' - points to the index of the final bgen, vep, and (if requested) bcf files respectively.
+
+    :param bgen_prefixes: a dictionary of form {vcfprefix: file_info} Where 'file_info' is a dictionary containing AT
+        LEAST a key for 'start' indicating the start position of this particular file.
+    :param output_prefix: The prefix for the final bgen file. Will be named <output_prefix>.bgen.
+    :param make_bcf: Should a bcf be made in addition to bgen? This can lead to VERY long runtimes if the number of
+        sites is large.
+    :param cmd_exec: A command executor object to run commands on the docker instance. Default is the global CMD_EXEC.
+    :return: A named dict containing the final bgen, vep, (and if requested) bcf file paths with associated indices.
+    """
+
+    # Set output names here:
+    final_bgen = Path(f'{output_prefix}.bgen')
+    final_bgen_idx = Path(f'{output_prefix}.bgen.bgi')
+
+    # sort the bgen files by the start position to make sure that they are truly in the correct order, but store
+    # the original prefix for the final bgen file - note the test data should be sorted in the opposite order
+    # (i.e. ['test_input2', 'test_input1'])
+    sorted_bgen_prefixes = [bgens['vcfprefix'] for bgens in sorted(bgen_prefixes, key=lambda x: x['start'])]
+
+    # Create a correct sample file:
+    final_sample = correct_sample_file(Path(f'{sorted_bgen_prefixes[0]}.sample'), output_prefix)
+
+    # Create a command line for concatenating bgen files and execute
+    print('STARTING BGEN CONCATENATION')
+    cmd = ' '.join([f'-g /test/{file}.bgen' for file in sorted_bgen_prefixes])
+    cmd = f'cat-bgen {cmd} -og /test/{final_bgen}'
+    cmd_exec.run_cmd_on_docker(cmd)
+
+    # Start BGEN indexing
+    print('STARTING BGEN INDEXING')
+    output = {}
+    subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=False)
+    final_bgen_link = generate_linked_dx_file(final_bgen)
+    subjob_launcher.launch_job(
+        function=index_bgen_file,
+        inputs={
+            'bgen_file': {"$dnanexus_link": final_bgen_link.get_id()},
+        },
+        outputs=['bgen_index'],
+        instance_type='mem3_ssd3_x12',
+        name=f'indexing_{final_bgen}',
+    )
+    subjob_launcher.submit_queue()
+    for subjob_output in subjob_launcher:
+        output['bgen_index'] = subjob_output['bgen_index']
+    # then let's get the actual file
+    final_bgen_idx = InputFileHandler(output['bgen_index']).get_file_handle()
+
+    # Collect & concat VEP annotations at this time
+    print('STARTING VEP CONCATENATION')
+    concat_vep = Path(f'{output_prefix}.vep.tsv')
+    with concat_vep.open('w') as vep_writer:
+        for file_n, bgen_prefix in enumerate(sorted_bgen_prefixes):
+
+            vep_reader = None
+            current_vep = Path(f'{bgen_prefix}.vep.tsv')
+            if current_vep.exists():
+                vep_reader = current_vep.open("r")
+            else:
+                current_vep = Path(f'{bgen_prefix}.vep.tsv.gz')
+                if current_vep.exists():
+                    vep_reader = gzip.open(current_vep, "rt")
+
+            with vep_reader:
+                for line_n, line in enumerate(vep_reader):
+                    if file_n == 0 and line_n == 0:  # Only write header of first file
+                        vep_writer.write(line)
+                    elif line_n != 0:
+                        vep_writer.write(line)
+
+        current_vep.unlink()
+
+    print('STARTING BZIP AND TABIX INDEXING OF VEP ANNOTATIONS')
+    # bgzip and tabix index the resulting annotations
+    final_vep, final_vep_idx = bgzip_and_tabix(concat_vep, comment_char='C', end_row=2)
+
+    # If make_bcf == True, then we actually do the bcf concatenation
+    if make_bcf:
+        final_bcf = Path(f'{output_prefix}.bcf')
+        final_bcf_idx = Path(f'{output_prefix}.bcf.csi')
+        bcf_cmd = ' '.join([f'-g /test/{file}.bcf' for file in sorted_bgen_prefixes])
+        bcf_cmd = f'bcftools concat --threads {os.cpu_count()} -a -D -Ob -o /test/{output_prefix}.bcf {bcf_cmd}'
+        cmd_exec.run_cmd_on_docker(bcf_cmd)
+
+        # And index:
+        bcf_idx = f'bcftools index /test/{output_prefix}.bcf'
+        cmd_exec.run_cmd_on_docker(bcf_idx)
+
+    else:
+        final_bcf = None
+        final_bcf_idx = None
+
+    return {'bgen': {'file': final_bgen, 'index': final_bgen_idx, 'sample': final_sample},
+            'vep': {'file': final_vep, 'index': final_vep_idx},
+            'bcf': {'file': final_bcf, 'index': final_bcf_idx}}
+
+
+@dxpy.entry_point('index_bgen_file')
+def index_bgen_file(bgen_file: dict) -> dict:
+    """
+    Index a BGEN file using bgenix.
+
+    :param bgen_file: A dictionary with a key 'bgen_file' pointing to the BGEN file to be indexed.
+    :return: A dictionary with a key 'bgen_index' pointing to the indexed BGEN file.
+    """
+
+    cmd_exec = prep_current_image([bgen_file])
+    final_bgen = InputFileHandler(bgen_file).get_file_handle()
+    cmd = f'bgenix -index -g /test/{final_bgen}'
+
+    cmd_exec.run_cmd_on_docker(cmd)
+
+    output = {}
+    generate_linked_dx_file(final_bgen)
+    output['bgen_index'] = generate_linked_dx_file(final_bgen)
+
+    return output
