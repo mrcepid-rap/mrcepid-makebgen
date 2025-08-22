@@ -333,7 +333,7 @@ def index_bgen_file(bgen_file: dict) -> dict:
     cmd_exec = prep_current_image([bgen_file])
     final_bgen = InputFileHandler(bgen_file).get_file_handle()
     print('Indexing BGEN file:', final_bgen)
-    cmd = f'bgenix -index -g /test/{final_bgen}'
+    cmd = f'bgenix -index -g /test/{final_bgen.name}'
 
     cmd_exec.run_cmd_on_docker(cmd)
 
