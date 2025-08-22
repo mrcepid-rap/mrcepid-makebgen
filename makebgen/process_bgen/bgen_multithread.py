@@ -306,7 +306,7 @@ def process_final_chunk(bgen: List[dict], bgen_index: List[dict], sample: List[d
         })
 
     clean_chrom_prefix = output_prefix.split('_')[0]
-    merged = make_final_bgen(bgen_prefixes=batch_files, output_prefix=f"{clean_chrom_prefix}_chunk{batch_index}",
+    merged = make_final_bgen_chunk(bgen_prefixes=batch_files, output_prefix=f"{clean_chrom_prefix}_chunk{batch_index}",
                              make_bcf=make_bcf)
 
     print('GETTING OUTPUT FILES')

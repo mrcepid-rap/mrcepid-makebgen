@@ -256,6 +256,7 @@ def make_final_bgen_chunk(bgen_prefixes: List[Dict[str, Any]], output_prefix: st
     output = {}
     subjob_launcher = SubjobUtility(log_update_time=600, incrementor=5, download_on_complete=False)
     final_bgen_link = generate_linked_dx_file(final_bgen)
+    print("About to start a subjob to index the final BGEN file...")
     subjob_launcher.launch_job(
         function=index_bgen_file,
         inputs={
@@ -331,6 +332,7 @@ def index_bgen_file(bgen_file: dict) -> dict:
 
     cmd_exec = prep_current_image([bgen_file])
     final_bgen = InputFileHandler(bgen_file).get_file_handle()
+    print('Indexing BGEN file:', final_bgen)
     cmd = f'bgenix -index -g /test/{final_bgen}'
 
     cmd_exec.run_cmd_on_docker(cmd)
@@ -338,5 +340,6 @@ def index_bgen_file(bgen_file: dict) -> dict:
     output = {}
     generate_linked_dx_file(final_bgen)
     output['bgen_index'] = generate_linked_dx_file(final_bgen)
+    print('Indexed BGEN file:', output['bgen_index'])
 
     return output
