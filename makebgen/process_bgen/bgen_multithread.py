@@ -309,8 +309,6 @@ def process_final_chunk(bgen: List[dict], bgen_index: List[dict], sample: List[d
     merged = make_final_bgen(bgen_prefixes=batch_files, output_prefix=f"{clean_chrom_prefix}_chunk{batch_index}",
                              make_bcf=make_bcf)
 
-    print('GETTING OUTPUT FILES')
-
     output = {
         'bgen': generate_linked_dx_file(merged['bgen']['file']),
         'bgen_index': generate_linked_dx_file(merged['bgen']['index']),
