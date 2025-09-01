@@ -10,7 +10,7 @@ from general_utilities.job_management.subjob_utility import SubjobUtility, prep_
 from general_utilities.job_management.thread_utility import ThreadUtility
 from general_utilities.mrc_logger import MRCLogger
 
-from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf, make_final_bgen_chunk
+from makebgen.process_bgen.process_bgen import make_final_bgen, make_bgen_from_vcf
 
 LOGGER = MRCLogger().get_logger()
 
