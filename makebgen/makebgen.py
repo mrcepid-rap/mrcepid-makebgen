@@ -66,6 +66,7 @@ def main(output_prefix: str, coordinate_file: str, make_bcf: bool, gene_dict: st
     final_output['logs'] = log_files
 
     LOGGER.info(f"Finished processing all batches")
+
     return final_output
 
 
