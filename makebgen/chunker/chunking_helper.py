@@ -156,7 +156,9 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
 
         # add a look-ahead check to see if we are near the end of the chromosome
         next_df = chrom_df[chrom_df['start'] > proposed_end]
-        if not next_df.empty and len(next_df) < 300:
+        # note this is an edge case, but if the chunker can't make ends meet with the very last chunk of the
+        # chromosome, we should just absorb the remaining files into this chunk
+        if not next_df.empty and len(next_df) < 50:
             # absorb the remaining files into this chunk
             proposed_end = chrom_df['end'].max()
 
