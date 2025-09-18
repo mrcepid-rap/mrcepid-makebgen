@@ -11,7 +11,7 @@ from pathlib import Path
 from intervaltree import IntervalTree
 from typing import Union, Tuple, List, Dict, Any
 
-from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file, LOGGER
 
 
 def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:
@@ -129,50 +129,70 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     chunks = []
     log_entries = []
 
-    # ensure safe ends are sorted for deterministic selection
-    safe_chunk_ends = sorted(get_safe_chunk_ends(chrom_df, gene_tree))
-
-    # start at the first file start coordinate
+    # set the initial start position and maximum end position for the chromosome
     current_start = chrom_df['start'].min()
-    # set the maximum possible end for this chromosome
     chrom_max = chrom_df['end'].max()
-    # initialise chunk counter
+    # get the safe chunk ends that do not overlap with genes
+    safe_chunk_ends = get_safe_chunk_ends(chrom_df, gene_tree)
     chunk_number = 0
 
     while current_start <= chrom_max:
-        # calculate the "ideal" end coordinate based on chunk size (in bp)
+        # Calculate the ideal end position for the current chunk
         ideal_end = current_start + chunk_size_bp
+        # note how many files are remaining in the DataFrame
+        files_remaining = chrom_df[chrom_df['start'] >= current_start]
+        # if there are no files remaining, break the loop
+        if files_remaining.empty:
+            break
 
-        # find safe ends that fall between current_start and ideal_end
-        candidate_ends = [end for end in safe_chunk_ends if current_start < end <= ideal_end]
+        # Filter to candidate ends <= ideal_end and safe
+        safe_within_limit = [end for end in safe_chunk_ends if current_start < end <= ideal_end]
+        # if no safe end is found within the limit, raise an error
+        if not safe_within_limit:
+            raise RuntimeError(f"No safe chunk end found near {ideal_end} on {chrom}")
 
-        if candidate_ends:
-            # if we have safe ends in range, pick the furthest one (max) to maximise chunk size
-            proposed_end = max(candidate_ends)
-        else:
-            # otherwise, look for the next safe end after current_start (even if > ideal_end)
-            higher = [end for end in safe_chunk_ends if end > current_start]
-            if higher:
-                # pick the nearest safe end above current_start
-                proposed_end = min(higher)
-            else:
-                # if no safe ends remain, force the last chunk to the chromosome max
-                proposed_end = chrom_max
+        # Set the proposed end to the maximum of the safe ends within the limit
+        proposed_end = max(safe_within_limit)
 
-        # select all rows whose interval falls within [current_start, proposed_end]
-        chunk_rows = chrom_df[(chrom_df['start'] >= current_start) & (chrom_df['end'] <= proposed_end)]
+        # add a look-ahead check to see if we are near the end of the chromosome
+        next_df = chrom_df[chrom_df['start'] > proposed_end]
+        if not next_df.empty and len(next_df) < 300:
+            # absorb the remaining files into this chunk
+            proposed_end = chrom_df['end'].max()
 
-        # record a log entry for this chunk (for debugging and traceability)
+        # see if the proposed end is within a gene (it absolutely should not be)
+        within_gene = is_position_within_gene(gene_tree, proposed_end)
+        # add a check to ensure the proposed end is not within a gene (none of them should be)
+        if within_gene:
+            # this happens for chr6, which ends within a non-coding gene
+            LOGGER.warning(
+                f"File limit reached but proposed_end {proposed_end} is within a gene, something went wrong. "
+                f"If you are on chromosome 6, this is likely due to the chromosome ending within a non-coding gene. "
+                f"Also worth checking - did you set the chunk size too small? "
+                f"Please look at the chunking logs and the concatenated output to ensure everything is correct.")
+        # calculate the chunk rows that fall within the proposed end
+        chunk_rows = files_remaining[files_remaining['start'] <= proposed_end]
+
+        # Log info
         log_entry = {
             'chrom': chrom,
             'chunk_number': f"{chrom}_chunk{chunk_number}",
             'chunk_start': current_start,
             'proposed_end': ideal_end,
+            'adjusted_for_file': proposed_end,
+            'adjusted_for_gene': 'safe',
             'final_chunk_end': proposed_end,
+            'not_within_gene': within_gene is None
         }
-        log_entries.append(log_entry)
+        # Add gene context (for logging purposes)
+        nearby_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
+        upstream_gene = nearby_genes[nearby_genes['end'] < proposed_end]
+        downstream_gene = nearby_genes[nearby_genes['start'] > proposed_end]
+        gene_before = upstream_gene.iloc[-1]['gene'] if not upstream_gene.empty else 'None'
+        gene_after = downstream_gene.iloc[0]['gene'] if not downstream_gene.empty else 'None'
+        log_entry['between_genes'] = f"{gene_before} and {gene_after}"
 
-        # add all rows for this chunk to the chunk list
+        # Create the chunk entry
         for _, row in chunk_rows.iterrows():
             chunks.append({
                 'chrom': log_entry['chunk_number'],
@@ -187,14 +207,16 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
                 'output_vep_idx': row['output_vep_idx']
             })
 
-        # advance current_start to the next file start strictly greater than proposed_end
+        # Add the log entry to the list
+        log_entries.append(log_entry)
+        # Update the current start position to the next start after the proposed end
         next_df = chrom_df[chrom_df['start'] > proposed_end]
+        # if there are no more rows, break the loop
         if next_df.empty:
-            # stop if there are no more rows beyond proposed_end
             break
+        # ensure the next start is greater than the proposed end
         current_start = next_df['start'].min()
-
-        # increment the chunk counter
+        # increment the chunk number
         chunk_number += 1
 
     # convert the chunks list to a DataFrame
@@ -290,3 +312,12 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
                      generate_linked_dx_file(file=chunks_combined_path, delete_on_upload=False))]
 
     return output_files, log_files
+
+
+if __name__ == "__main__":
+
+    output_files, log_files = chunking_helper(
+        gene_dict=Path("/Users/alish.palmos/PycharmProjects/mrcepid-makebgen/test/test_data/final_dict.json"),
+        coordinate_path=Path("/Users/alish.palmos/PycharmProjects/mrcepid-makebgen/test/test_data/chr6_concatenated_output.txt"),
+        chunk_size=9
+    )
