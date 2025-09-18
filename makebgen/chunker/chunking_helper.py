@@ -5,13 +5,13 @@ cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not
 """
 
 import json
-import dxpy
-import pandas as pd
 from pathlib import Path
-from intervaltree import IntervalTree
 from typing import Union, Tuple, List, Dict, Any
 
+import dxpy
+import pandas as pd
 from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file, LOGGER
+from intervaltree import IntervalTree
 
 
 def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:
@@ -312,12 +312,3 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
                      generate_linked_dx_file(file=chunks_combined_path, delete_on_upload=False))]
 
     return output_files, log_files
-
-
-if __name__ == "__main__":
-
-    output_files, log_files = chunking_helper(
-        gene_dict=Path("/Users/alish.palmos/PycharmProjects/mrcepid-makebgen/test/test_data/final_dict.json"),
-        coordinate_path=Path("/Users/alish.palmos/PycharmProjects/mrcepid-makebgen/test/test_data/chr6_concatenated_output.txt"),
-        chunk_size=9
-    )
