@@ -5,13 +5,13 @@ cannot be inside a gene, instead we must find a chunk end that is safe, i.e. not
 """
 
 import json
-import dxpy
-import pandas as pd
 from pathlib import Path
-from intervaltree import IntervalTree
 from typing import Union, Tuple, List, Dict, Any
 
-from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file
+import dxpy
+import pandas as pd
+from general_utilities.import_utils.file_handlers.dnanexus_utilities import generate_linked_dx_file, LOGGER
+from intervaltree import IntervalTree
 
 
 def parse_gene_dict(gene_dict_path: Union[str, Path]) -> pd.DataFrame:
@@ -153,13 +153,25 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
 
         # Set the proposed end to the maximum of the safe ends within the limit
         proposed_end = max(safe_within_limit)
+
+        # add a look-ahead check to see if we are near the end of the chromosome
+        next_df = chrom_df[chrom_df['start'] > proposed_end]
+        # note this is an edge case, but if the chunker can't make ends meet with the very last chunk of the
+        # chromosome, we should just absorb the remaining files into this chunk
+        if not next_df.empty and len(next_df) < 50:
+            # absorb the remaining files into this chunk
+            proposed_end = chrom_df['end'].max()
+
         # see if the proposed end is within a gene (it absolutely should not be)
         within_gene = is_position_within_gene(gene_tree, proposed_end)
         # add a check to ensure the proposed end is not within a gene (none of them should be)
         if within_gene:
-            raise RuntimeError(
-                f"File limit reached but proposed_end {proposed_end} is within a gene, something went wrong."
-                f"Did you set the chunk size too small?")
+            # this happens for chr6, which ends within a non-coding gene
+            LOGGER.warning(
+                f"File limit reached but proposed_end {proposed_end} is within a gene, something went wrong. "
+                f"If you are on chromosome 6, this is likely due to the chromosome ending within a non-coding gene. "
+                f"Also worth checking - did you set the chunk size too small? "
+                f"Please look at the chunking logs and the concatenated output to ensure everything is correct.")
         # calculate the chunk rows that fall within the proposed end
         chunk_rows = files_remaining[files_remaining['start'] <= proposed_end]
 
