@@ -109,8 +109,8 @@ def find_next_safe_end(safe_chunk_ends: List[int], proposed_end: int) -> int:
     return max(next_safe_ends)
 
 
-def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, chunk_size_bp: int) -> Tuple[
-    pd.DataFrame, List[Dict]]:
+def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, chunk_size_bp: int,
+                     max_files: int = 2000) -> Tuple[pd.DataFrame, List[Dict]]:
     """
     Splits a chromosome DataFrame into chunks of specified size, ensuring that chunks do not overlap with genes.
 
@@ -118,6 +118,7 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     :param gene_df: DataFrame containing gene information.
     :param chrom: Chromosome identifier to filter the DataFrame.
     :param chunk_size_bp: Size of each chunk in base pairs.
+    :param max_files: Maximum number of files to allow in a single chunk.
     :return: Tuple containing a DataFrame of chunks and a log entry for each chunk.
     """
 
@@ -134,16 +135,24 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     chrom_max = chrom_df['end'].max()
     # get the safe chunk ends that do not overlap with genes
     safe_chunk_ends = get_safe_chunk_ends(chrom_df, gene_tree)
-    chunk_number = 0
+    chunk_number = 1
 
     while current_start <= chrom_max:
-        # Calculate the ideal end position for the current chunk
-        ideal_end = current_start + chunk_size_bp
         # note how many files are remaining in the DataFrame
         files_remaining = chrom_df[chrom_df['start'] >= current_start]
         # if there are no files remaining, break the loop
         if files_remaining.empty:
             break
+
+        # Calculate the ideal end position for the current chunk based on distance
+        ideal_end_size = current_start + chunk_size_bp
+
+        # Also calculate the ideal end position based on file count
+        if len(files_remaining) > max_files:
+            ideal_end_count = files_remaining.iloc[max_files - 1]['end']
+            ideal_end = min(ideal_end_size, ideal_end_count)
+        else:
+            ideal_end = ideal_end_size
 
         # Filter to candidate ends <= ideal_end and safe
         safe_within_limit = [end for end in safe_chunk_ends if current_start < end <= ideal_end]
@@ -159,8 +168,9 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
         # note this is an edge case, but if the chunker can't make ends meet with the very last chunk of the
         # chromosome, we should just absorb the remaining files into this chunk
         if not next_df.empty and len(next_df) < 50:
-            # absorb the remaining files into this chunk
-            proposed_end = chrom_df['end'].max()
+            # check that we aren't already over the file limit
+            if (len(files_remaining) - len(next_df)) < max_files:
+                proposed_end = chrom_df['end'].max()
 
         # see if the proposed end is within a gene (it absolutely should not be)
         within_gene = is_position_within_gene(gene_tree, proposed_end)
@@ -184,7 +194,8 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
             'adjusted_for_file': proposed_end,
             'adjusted_for_gene': 'safe',
             'final_chunk_end': proposed_end,
-            'not_within_gene': within_gene is None
+            'not_within_gene': within_gene is None,
+            'file_count': len(chunk_rows)
         }
         # Add gene context (for logging purposes)
         nearby_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
@@ -228,7 +239,8 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     return chunk_df, log_entries
 
 
-def split_coordinates_file(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame, chunk_size: int):
+def split_coordinates_file(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame, chunk_size: int,
+                            max_files: int = 2000):
     """
     Splits the coordinates file into chunks based on the specified chunk size,
     ensuring that chunks do not overlap with genes.
@@ -236,6 +248,7 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame
     :param coordinates_file: Dataframe with the genetic file coordinates.
     :param gene_df: Dataframe with gene information.
     :param chunk_size: Size of each chunk in megabases (default: 3Mb).
+    :param max_files: Maximum number of files per chunk.
     :return: Tuple containing a DataFrame of chunks and a list of log entries.
     """
     # Convert chunk size from megabases to base pairs
@@ -250,7 +263,7 @@ def split_coordinates_file(coordinates_file: pd.DataFrame, gene_df: pd.DataFrame
         # Filter the coordinates file for the current chromosome
         chrom_df = coordinates_file[coordinates_file['chrom'] == chrom]
         # run the chunking function for the current chromosome
-        chunk_df, log_entries = chunk_chromosome(chrom_df, gene_df, chrom, chunk_size_bp)
+        chunk_df, log_entries = chunk_chromosome(chrom_df, gene_df, chrom, chunk_size_bp, max_files=max_files)
         # Add the chunk DataFrame and log entries to the output
         all_chunks.append(chunk_df)
         all_logs.extend(log_entries)
@@ -269,13 +282,15 @@ def get_chunk_number(path: Path) -> int:
     return int(path.name.split('chunk')[-1])
 
 
-def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> Tuple[List[Any], List[Dict]]:
+def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int,
+                    max_files: int = 2000) -> Tuple[List[Any], List[Dict]]:
     """
     Main function to create BGEN chunk coordinates
 
     :param gene_dict: Path to the JSON file containing gene dictionary.
     :param coordinate_path: Path to the input coordinate file.
     :param chunk_size: Size of each chunk in megabases.
+    :param max_files: Maximum number of files per chunk.
     :return: List of file paths for the chunked output files.
     """
 
@@ -292,7 +307,7 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int) -> 
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Split the coordinates file into chunks
-    chunked_df, log_entries = split_coordinates_file(coord_df, gene_df, chunk_size)
+    chunked_df, log_entries = split_coordinates_file(coord_df, gene_df, chunk_size, max_files=max_files)
 
     # Save each chunk to a separate file
     for chunk_label in chunked_df['chrom'].unique():
