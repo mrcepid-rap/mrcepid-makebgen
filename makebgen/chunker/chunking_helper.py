@@ -145,16 +145,16 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
             break
 
         # Calculate the ideal end position for the current chunk based on distance
-        ideal_end_size = current_start + chunk_size_bp
+        ideal_end = current_start + chunk_size_bp
 
-        # Also calculate the ideal end position based on file count
+        # Also calculate the ideal end position based on file count if we exceed max_files
         if len(files_remaining) > max_files:
+            # End of the max_files-th file remaining
             ideal_end_count = files_remaining.iloc[max_files - 1]['end']
-            ideal_end = min(ideal_end_size, ideal_end_count)
-        else:
-            ideal_end = ideal_end_size
+            ideal_end = min(ideal_end, ideal_end_count)
 
         # Filter to candidate ends <= ideal_end and safe
+        # safe_chunk_ends are already file ends from chrom_df['end']
         safe_within_limit = [end for end in safe_chunk_ends if current_start < end <= ideal_end]
         # if no safe end is found within the limit, raise an error
         if not safe_within_limit:
@@ -162,15 +162,6 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
 
         # Set the proposed end to the maximum of the safe ends within the limit
         proposed_end = max(safe_within_limit)
-
-        # add a look-ahead check to see if we are near the end of the chromosome
-        next_df = chrom_df[chrom_df['start'] > proposed_end]
-        # note this is an edge case, but if the chunker can't make ends meet with the very last chunk of the
-        # chromosome, we should just absorb the remaining files into this chunk
-        if not next_df.empty and len(next_df) < 50:
-            # check that we aren't already over the file limit
-            if (len(files_remaining) - len(next_df)) < max_files:
-                proposed_end = chrom_df['end'].max()
 
         # see if the proposed end is within a gene (it absolutely should not be)
         within_gene = is_position_within_gene(gene_tree, proposed_end)
