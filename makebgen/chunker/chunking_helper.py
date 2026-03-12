@@ -122,8 +122,11 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     :return: Tuple containing a DataFrame of chunks and a log entry for each chunk.
     """
 
+    # Extract base chromosome name (e.g., 'chr11' from 'chr11_chunk5') for gene dictionary lookups
+    base_chrom = chrom.split('_')[0]
+
     # build an interval tree for the genes on this chromosome
-    gene_tree = build_interval_tree(gene_df, chrom, 'start', 'end', 'gene')
+    gene_tree = build_interval_tree(gene_df, base_chrom, 'start', 'end', 'gene')
     # sort the chromosome DataFrame by 'start' position
     chrom_df = chrom_df.sort_values(by='start').reset_index(drop=True)
 
@@ -189,7 +192,7 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
             'file_count': len(chunk_rows)
         }
         # Add gene context (for logging purposes)
-        nearby_genes = gene_df[gene_df['chrom'] == chrom].sort_values(by='start').reset_index(drop=True)
+        nearby_genes = gene_df[gene_df['chrom'] == base_chrom].sort_values(by='start').reset_index(drop=True)
         upstream_gene = nearby_genes[nearby_genes['end'] < proposed_end]
         downstream_gene = nearby_genes[nearby_genes['start'] > proposed_end]
         gene_before = upstream_gene.iloc[-1]['gene'] if not upstream_gene.empty else 'None'
