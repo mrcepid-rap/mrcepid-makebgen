@@ -47,3 +47,4 @@ test/test_data/filtered_exclude_old.txt
 chunked_output_chr*
 all_chunks_combined_chr*
 chunking_log_chr*
+*concatenated_output*

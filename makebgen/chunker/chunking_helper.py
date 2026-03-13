@@ -293,7 +293,7 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int,
     coord_df = coord_df.drop_duplicates(subset=["chrom", "start", "end", "vcf_prefix"], keep="first")
 
     # chrom
-    unique_chrom = coord_df["chrom"].unique()[0]
+    unique_chrom = coord_df["chrom"].unique()[0].split('_chunk')[0]
     output_path = Path(f"chunked_output_{unique_chrom}")
     output_path.mkdir(parents=True, exist_ok=True)
 
