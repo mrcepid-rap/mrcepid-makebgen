@@ -135,7 +135,7 @@ def chunk_chromosome(chrom_df: pd.DataFrame, gene_df: pd.DataFrame, chrom: str, 
     chrom_max = chrom_df['end'].max()
     # get the safe chunk ends that do not overlap with genes
     safe_chunk_ends = get_safe_chunk_ends(chrom_df, gene_tree)
-    chunk_number = 1
+    chunk_number = 0
 
     while current_start <= chrom_max:
         # note how many files are remaining in the DataFrame
@@ -293,7 +293,7 @@ def chunking_helper(gene_dict: Path, coordinate_path: Path, chunk_size: int,
     coord_df = coord_df.drop_duplicates(subset=["chrom", "start", "end", "vcf_prefix"], keep="first")
 
     # chrom
-    unique_chrom = coord_df["chrom"].unique()[0].split('_chunk')[0]
+    unique_chrom = coord_df["chrom"].unique()[0]
     output_path = Path(f"chunked_output_{unique_chrom}")
     output_path.mkdir(parents=True, exist_ok=True)
 
